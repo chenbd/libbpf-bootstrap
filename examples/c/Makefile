@@ -25,6 +25,8 @@ CFLAGS := -g -Wall
 ALL_LDFLAGS := $(LDFLAGS) $(EXTRA_LDFLAGS)
 
 APPS = minimal minimal_legacy bootstrap uprobe kprobe fentry usdt sockfilter tc ksyscall
+MY_APPS = syscallprofiler usdtmem
+APPS += $(MY_APPS)
 
 CARGO ?= $(shell which cargo)
 ifeq ($(strip $(CARGO)),)
