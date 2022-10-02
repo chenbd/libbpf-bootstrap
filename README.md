@@ -119,6 +119,55 @@ $ sudo cat /sys/kernel/debug/tracing/trace_pipe
           uprobe-1809291 [007] .... 4017234.106701: 0: uprobed_sub EXIT: return = 0
 ```
 
+## Uprobe
+
+`uprobeprofiler` is an example of profiling with user-space entry and exit (return) probes,
+`uprobe` and `uretprobe` in libbpf lingo. It attached `uprobe` and `uretprobe`
+BPF programs to user specified function by address(with `-a <address>` option)  or function name(with `-n <symbol>` option)
+or library name and function name(with `-f <library:symbol>` option) to specified process(with `-p <pid>` option, -1 for any process).
+The `uprobeprofiler` uses map for collecting function call latency in micro seconds and counter, display in stand output as the following:
+
+
+```shell
+sudo ./uprobeprofiler -p 1262767 -n malloc
+symbol='malloc' found in '/usr/lib/x86_64-linux-gnu/libc.so.6' off=a5120
+Successfully started! Please run `sudo cat /sys/kernel/debug/tracing/trace_pipe` to see output of the BPF programs.
+
+profiling address='0x7f0af01cd120' symbol='malloc' for pid 1262767:
+		Microseconds	 : Count
+---------------------------------| Total=0
+....
+profiling address='0x7f0af01cd120' symbol='malloc' for pid 1262767:
+		Microseconds	 : Count
+	[       0	       1]:      146 (44.92%)
+	[       2	       3]:      167 (51.38%)
+	[       4	       7]:        9 (2.77%)
+	[       8	      15]:        1 (0.31%)
+	[      16	      31]:        2 (0.62%)
+---------------------------------| Total=325
+```
+
+```shell
+$ sudo ./uprobeprofiler -p -1 -f /usr/lib/x86_64-linux-gnu/libc.so.6:malloc
+symbol='malloc' found in '/usr/lib/x86_64-linux-gnu/libc.so.6' off=a5120
+Successfully started! Please run `sudo cat /sys/kernel/debug/tracing/trace_pipe` to see output of the BPF programs.
+
+profiling address='(nil)' symbol='malloc' for pid -1:
+		Microseconds	 : Count
+	[       4	       7]:        1 (100.00%)
+---------------------------------| Total=1
+....
+profiling address='(nil)' symbol='malloc' for pid -1:
+		Microseconds	 : Count
+	[       0	       1]:     4100 (10.61%)
+	[       2	       3]:    26885 (69.59%)
+	[       4	       7]:     7090 (18.35%)
+	[       8	      15]:      398 (1.03%)
+	[      16	      31]:      146 (0.38%)
+	[      32	      63]:       14 (0.04%)
+---------------------------------| Total=38633
+```
+
 ## USDT
 
 `usdt` is an example of dealing with USDT probe. It attaches USDT BPF programs to
