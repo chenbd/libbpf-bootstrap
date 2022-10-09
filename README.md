@@ -129,7 +129,7 @@ The `uprobeprofiler` uses map for collecting function call latency in micro seco
 
 
 ```shell
-sudo ./uprobeprofiler -p 1262767 -n malloc
+$ sudo ./uprobeprofiler -p 1262767 -n malloc
 symbol='malloc' found in '/usr/lib/x86_64-linux-gnu/libc.so.6' off=a5120
 Successfully started! Please run `sudo cat /sys/kernel/debug/tracing/trace_pipe` to see output of the BPF programs.
 
@@ -166,6 +166,35 @@ profiling address='(nil)' symbol='malloc' for pid -1:
 	[      16	      31]:      146 (0.38%)
 	[      32	      63]:       14 (0.04%)
 ---------------------------------| Total=38633
+```
+
+## Rawtracepoint
+
+`syscallprofiler` is an example of profiling with system call entry and exit,
+`raw_tracepoint` in libbpf lingo. It attached `sys_enter` and `sys_exit`
+BPF programs to user specified system call no(with `-c <syscall no>` option)  or system call name(with `-n <syscall name>` option)
+to specified process(with `-p <pid>` option, -1 for any process).
+The `syscallprofiler` uses map for collecting function call latency in micro seconds and counter, display in stand output as the following:
+
+```shell
+$ sudo ./syscallprofiler  -p -1 -n ioctl
+Successfully started! Please run `sudo cat /sys/kernel/debug/tracing/trace_pipe` to see output of the BPF programs.
+
+profiling syscall=16(ioctl) for pid -1:
+		Microseconds	 : Count
+---------------------------------| Total=0
+..........
+profiling syscall=16(ioctl) for pid -1:
+		Microseconds	 : Count
+	[       0	       1]:      646 (27.64%)
+	[       2	       3]:        8 (0.34%)
+	[       4	       7]:      265 (11.34%)
+	[       8	      15]:       47 (2.01%)
+	[      16	      31]:      251 (10.74%)
+	[      32	      63]:      420 (17.97%)
+	[      64	     127]:      682 (29.18%)
+	[     128	     255]:       18 (0.77%)
+---------------------------------| Total=2337
 ```
 
 ## USDT

@@ -69,8 +69,8 @@ static __always_inline __u64 log2l(__u64 v)
 #define EEXIST 17
 #endif
 
-static __always_inline void *
-bpf_map_lookup_or_try_init(void *map, const void *key, const void *init)
+static __always_inline void *map_lookup_or_try_init(void *map, const void *key,
+                                                    const void *init)
 {
     void *val;
     long err;
@@ -84,8 +84,7 @@ bpf_map_lookup_or_try_init(void *map, const void *key, const void *init)
     return bpf_map_lookup_elem(map, key);
 }
 
-static __always_inline void *bpf_map_lookup_and_delete(void *map,
-                                                       const void *key)
+static __always_inline void *map_lookup_and_delete(void *map, const void *key)
 {
     void *val = bpf_map_lookup_elem(map, key);
     if (val) bpf_map_delete_elem(map, key);
@@ -96,12 +95,12 @@ SEC("uretprobe")
 int BPF_KRETPROBE(uretprobeprofiler, unsigned long ret)
 {
     __u64 pid = bpf_get_current_pid_tgid();
-    __u64 *tsp = bpf_map_lookup_and_delete(&clocks, &pid);
+    __u64 *tsp = map_lookup_and_delete(&clocks, &pid);
     if (!tsp) return 0;
 
     struct hist initial_hist = {};
     __u32 index = 0;
-    struct hist *hp = bpf_map_lookup_or_try_init(&hists, &index, &initial_hist);
+    struct hist *hp = map_lookup_or_try_init(&hists, &index, &initial_hist);
     if (!hp) return 0;
 
     __u64 delta = bpf_ktime_get_ns() - *tsp;

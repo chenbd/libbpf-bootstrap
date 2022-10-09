@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
+// SPDX-License-Identifier: GPL-2.0 OR BSD-2-Clause
 /* Copyright (c) 2022 Baodong Chen */
 #include "vmlinux.h"
 #include <bpf/bpf_helpers.h>
@@ -13,7 +13,7 @@ __u32 filter_syscall = 0;
 
 struct {
     __uint(type, BPF_MAP_TYPE_HASH);
-    __type(key, pid_t);
+    __type(key, __u64);
     __type(value, __u64);
     __uint(max_entries, 1024);
 } clocks SEC(".maps");
@@ -31,8 +31,8 @@ int sys_enter(struct bpf_raw_tracepoint_args *ctx)
     __u64 id = ctx->args[1];
     if (id != filter_syscall) return 0;
 
-    pid_t pid = (pid_t)(bpf_get_current_pid_tgid() >> 32);
-    if (pid != filter_pid) return 0;
+    __u64 pid = bpf_get_current_pid_tgid();
+    if (filter_pid > 0 && (pid_t)(pid >> 32) != filter_pid) return 0;
 
     /**
      * https://github.com/DavadDi/bpf_study/blob/master/the-art-of-writing-ebpf-programs-a-primer/index.md
@@ -85,8 +85,8 @@ static __always_inline __u64 log2l(__u64 v)
 #define EEXIST 17
 #endif
 
-static __always_inline void *
-bpf_map_lookup_or_try_init(void *map, const void *key, const void *init)
+static __always_inline void *map_lookup_or_try_init(void *map, const void *key,
+                                                    const void *init)
 {
     void *val;
     long err;
@@ -100,8 +100,7 @@ bpf_map_lookup_or_try_init(void *map, const void *key, const void *init)
     return bpf_map_lookup_elem(map, key);
 }
 
-static __always_inline void *bpf_map_lookup_and_delete(void *map,
-                                                       const void *key)
+static __always_inline void *map_lookup_and_delete(void *map, const void *key)
 {
     void *val = bpf_map_lookup_elem(map, key);
     if (val) bpf_map_delete_elem(map, key);
@@ -115,15 +114,15 @@ int sys_exit(struct bpf_raw_tracepoint_args *ctx)
     __u64 id = BPF_CORE_READ(args, orig_ax);
     if (id != filter_syscall) return 0;
 
-    pid_t pid = (pid_t)(bpf_get_current_pid_tgid() >> 32);
-    if (pid != filter_pid) return 0;
+    __u64 pid = bpf_get_current_pid_tgid();
+    if (filter_pid > 0 && (pid_t)(pid >> 32) != filter_pid) return 0;
 
-    __u64 *tsp = bpf_map_lookup_and_delete(&clocks, &pid);
+    __u64 *tsp = map_lookup_and_delete(&clocks, &pid);
     if (!tsp) return 0;
 
     struct hist initial_hist = {};
     __u32 index = 0;
-    struct hist *hp = bpf_map_lookup_or_try_init(&hists, &index, &initial_hist);
+    struct hist *hp = map_lookup_or_try_init(&hists, &index, &initial_hist);
     if (!hp) return 0;
 
     __u64 delta = bpf_ktime_get_ns() - *tsp;

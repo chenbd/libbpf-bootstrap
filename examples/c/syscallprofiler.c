@@ -20,7 +20,8 @@ static int libbpf_print_fn(enum libbpf_print_level level, const char *format,
 
 static void show_help(const char *progname)
 {
-    printf("Usage: %s [-p <pid> -c <syscall>] [-h]\n", progname);
+    printf("Usage: %s [-p <pid> -c <syscall no> -n <syscall name>] [-v] [-h]\n",
+           progname);
 }
 
 int main(int argc, char **argv)
@@ -28,11 +29,12 @@ int main(int argc, char **argv)
     struct syscallprofiler_bpf *skel;
     int err;
     int argp = 0;
-    int filter_pid = -1;
+    int verbose = 0;
     /* Profiling write() syscall from our process by default */
     uint32_t filter_syscall = SYS_write;
+    int filter_pid = 0;
 
-    while ((argp = getopt(argc, argv, "hp:c:")) != -1) {
+    while ((argp = getopt(argc, argv, "hvp:c:n:")) != -1) {
         switch (argp) {
         case 'p':
             filter_pid = atoi(optarg);
@@ -40,17 +42,27 @@ int main(int argc, char **argv)
         case 'c':
             filter_syscall = (uint32_t)atoi(optarg);
             break;
+        case 'n':
+            filter_syscall = syscall_no(optarg);
+            if (filter_syscall == UINT32_MAX) {
+                fprintf(stderr, "Invalid syscall name '%s'\n", optarg);
+                return 1;
+            }
+            break;
+        case 'v':
+            verbose = 1;
+            break;
         case 'h':
         default:
             show_help(argv[0]);
             return 1;
         }
     }
-    if (filter_pid <= 0) filter_pid = getpid();
+    if (filter_pid == 0) filter_pid = getpid();
 
     libbpf_set_strict_mode(LIBBPF_STRICT_ALL);
     /* Set up libbpf errors and debug info callback */
-    libbpf_set_print(libbpf_print_fn);
+    if (verbose) libbpf_set_print(libbpf_print_fn);
 
     /* Open BPF application */
     skel = syscallprofiler_bpf__open();
@@ -82,8 +94,6 @@ int main(int argc, char **argv)
 
     uint32_t counter = 0;
     for (;;) {
-        /* trigger our BPF program */
-        fprintf(stderr, ".");
         if (counter % 10 == 0) {
             uint32_t key = 0;
             struct hist hists;
@@ -111,6 +121,7 @@ int main(int argc, char **argv)
             }
         }
         counter++;
+        fprintf(stderr, ".");
         sleep(1);
     }
 
