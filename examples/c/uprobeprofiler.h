@@ -8,4 +8,10 @@ struct hist {
     __u64 slots[MAX_SLOTS];
 };
 
+#ifndef MAX_STACK_DEPTH
+#define MAX_STACK_DEPTH 64
+#endif
+
+#define FLAG_COLLECT_USER_STACK (0x01)
+
 #endif /* __UPROBE_PROFILER_H__ */

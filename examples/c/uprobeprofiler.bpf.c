@@ -7,6 +7,7 @@
 
 char LICENSE[] SEC("license") = "Dual BSD/GPL";
 
+uint32_t __flags = 0;
 
 struct {
     __uint(type, BPF_MAP_TYPE_HASH);
@@ -22,14 +23,36 @@ struct {
     __uint(max_entries, 1);
 } hists SEC(".maps");
 
+typedef __u64 stack_trace_t[MAX_STACK_DEPTH];
+
+struct {
+    __uint(type, BPF_MAP_TYPE_STACK_TRACE);
+    __uint(max_entries, 16384);
+    __type(key, __u32);
+    __type(value, stack_trace_t);
+} stackmap SEC(".maps");
+
+struct {
+    __uint(type, BPF_MAP_TYPE_HASH);
+    __uint(max_entries, 16384);
+    __type(key, __u32);
+    __type(value, __u64);
+} countsmap SEC(".maps");
+
+static __always_inline __u32 collect_userstack_trace(struct pt_regs *ctx)
+{
+    __u32 stackid = bpf_get_stackid(ctx, &stackmap,
+                                    BPF_F_USER_STACK | BPF_F_FAST_STACK_CMP);
+    if ((int)stackid < 0) {
+        bpf_printk("bpf_get_stackid error, stackid=%d\n", stackid);
+    }
+    return stackid;
+}
+
 SEC("uprobe")
-int BPF_KPROBE(uprobeprofiler, unsigned long arg1, unsigned long arg2,
-               unsigned long arg3, unsigned long arg4, unsigned long arg5)
+int BPF_KPROBE(uprobeprofiler)
 {
     __u64 pid = bpf_get_current_pid_tgid();
-    /* bpf_printk("uprobe: arg1=%lu arg2=%lu arg3=%lu arg4=%lu arg5=%lu\n",
-       arg1, arg2, arg3, arg4, arg5);
-     */
     __u64 ts = bpf_ktime_get_ns();
     bpf_map_update_elem(&clocks, &pid, &ts, BPF_ANY);
     return 0;
@@ -92,11 +115,24 @@ static __always_inline void *map_lookup_and_delete(void *map, const void *key)
 }
 
 SEC("uretprobe")
-int BPF_KRETPROBE(uretprobeprofiler, unsigned long ret)
+int BPF_KRETPROBE(uretprobeprofiler)
 {
     __u64 pid = bpf_get_current_pid_tgid();
     __u64 *tsp = map_lookup_and_delete(&clocks, &pid);
     if (!tsp) return 0;
+
+    if (__flags & FLAG_COLLECT_USER_STACK) {
+        __u32 userstack = collect_userstack_trace(ctx);
+        if ((int)userstack >= 0) {
+            __u64 *val = bpf_map_lookup_elem(&countsmap, &userstack);
+            if (val) {
+                (*val)++;
+            } else {
+                __u64 one = 1;
+                bpf_map_update_elem(&countsmap, &userstack, &one, BPF_NOEXIST);
+            }
+        }
+    }
 
     struct hist initial_hist = {};
     __u32 index = 0;
@@ -110,7 +146,7 @@ int BPF_KRETPROBE(uretprobeprofiler, unsigned long ret)
     uint64_t counter = __sync_fetch_and_add(&hp->slots[slot], 1);
     if (counter % 8 == 0) {
         bpf_printk("uretprobe: pid=%d delta=%lu slots[%lu]=%lu ret=%lx\n", pid,
-                   delta, slot, counter, ret);
+                   delta, slot, counter, PT_REGS_RC(ctx));
     }
 
     return 0;

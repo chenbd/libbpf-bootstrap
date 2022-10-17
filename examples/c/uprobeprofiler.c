@@ -10,8 +10,15 @@
 #include <bpf/libbpf.h>
 #include "uprobeprofiler.skel.h"
 #include "uprobeprofiler.h"
+#include "blazesym.h"
 
 static int __verbose = 0;
+static struct blazesym *__symbolizer;
+
+struct stackid_counts {
+    __u32 stackid;
+    __u64 counter;
+} __stackid_counts[4096];
 
 static int libbpf_print_fn(enum libbpf_print_level level, const char *format,
                            va_list args)
@@ -312,14 +319,109 @@ static ssize_t get_uprobe_offset_by_symbol(const char *symbol, pid_t pid,
     return off;
 }
 
+static void __show_stack_trace(__u64 *stack, int stack_sz, pid_t pid)
+{
+    const struct blazesym_result *result;
+    const struct blazesym_csym *sym;
+    sym_src_cfg src;
+    int i, j;
+
+    if (pid) {
+        src.src_type = SRC_T_PROCESS;
+        src.params.process.pid = pid;
+    } else {
+        src.src_type = SRC_T_KERNEL;
+        src.params.kernel.kallsyms = NULL;
+        src.params.kernel.kernel_image = NULL;
+    }
+
+    result = blazesym_symbolize(__symbolizer, &src, 1, (const uint64_t *)stack,
+                                stack_sz);
+
+    for (i = 0; i < stack_sz; i++) {
+        if (!result || result->size <= i || !result->entries[i].size) {
+            printf("  %d [<%016llx>]\n", i, stack[i]);
+            continue;
+        }
+
+        if (result->entries[i].size == 1) {
+            sym = &result->entries[i].syms[0];
+            if (sym->path && sym->path[0]) {
+                printf("  %d [<%016llx>] %s+0x%llx %s:%ld\n", i, stack[i],
+                       sym->symbol, stack[i] - sym->start_address, sym->path,
+                       sym->line_no);
+            } else {
+                printf("  %d [<%016llx>] %s+0x%llx\n", i, stack[i], sym->symbol,
+                       stack[i] - sym->start_address);
+            }
+            continue;
+        }
+
+        printf("  %d [<%016llx>]\n", i, stack[i]);
+        for (j = 0; j < result->entries[i].size; j++) {
+            sym = &result->entries[i].syms[j];
+            if (sym->path && sym->path[0]) {
+                printf("        %s+0x%llx %s:%ld\n", sym->symbol,
+                       stack[i] - sym->start_address, sym->path, sym->line_no);
+            } else {
+                printf("        %s+0x%llx\n", sym->symbol,
+                       stack[i] - sym->start_address);
+            }
+        }
+    }
+
+    blazesym_result_free(result);
+}
+
+static void print_stack(struct uprobeprofiler_bpf *skel,
+                        struct stackid_counts *stackidcounts, pid_t pid)
+{
+    __u64 ip[MAX_STACK_DEPTH] = {};
+    if (bpf_map__lookup_elem(skel->maps.stackmap, &stackidcounts->stackid,
+                             sizeof(stackidcounts->stackid), ip, sizeof(ip),
+                             0) != 0) {
+        printf("----\n");
+    } else {
+        int i;
+        int stack_sz = 0;
+        for (i = MAX_STACK_DEPTH - 1; i >= 0; i--) {
+            if (ip[i] != 0) stack_sz++;
+        }
+        __show_stack_trace(ip, stack_sz, pid);
+    }
+}
+
+static void print_stacks(struct uprobeprofiler_bpf *skel,
+                         struct stackid_counts *stackidcounts, size_t size,
+                         pid_t pid)
+{
+    size_t i;
+    for (i = 0; i < size; ++i) {
+        printf("stackid=%u counter=%llu\n", stackidcounts->stackid,
+               stackidcounts->counter);
+        print_stack(skel, stackidcounts, pid);
+        stackidcounts++;
+    }
+}
+
+static int cmpstackidcounts(const void *p1, const void *p2)
+{
+    const struct stackid_counts *_p1 = p1;
+    const struct stackid_counts *_p2 = p2;
+    if (_p1->counter > _p2->counter) return -1;
+    if (_p1->counter < _p2->counter) return 1;
+    return _p1->stackid < _p2->stackid   ? -1
+           : _p1->stackid > _p2->stackid ? 1
+                                         : 0;
+}
+
 static void show_help(const char *progname)
 {
     /* clang-format off */
-    printf("Usage: %s [-p <pid> -a <address> -n <symbol> -f <library:symbol>] [-v] [-h]\n",
+    printf("Usage: %s [-p <pid> -a <address> -n <symbol> -f <library:symbol>] [-s] [-v] [-h]\n",
            progname);
     /* clang-format on */
 }
-
 int main(int argc, char **argv)
 {
     struct uprobeprofiler_bpf *skel;
@@ -330,8 +432,9 @@ int main(int argc, char **argv)
     void *address = 0;      /* symbol address */
     char symbol[128] = {0}; /* symbol name */
     char pathname[256] = {0};
+    uint32_t __flags = 0;
 
-    while ((argp = getopt(argc, argv, "hvp:a:n:f:")) != -1) {
+    while ((argp = getopt(argc, argv, "hvsp:a:n:f:")) != -1) {
         switch (argp) {
         case 'p':
             filter_pid = atoi(optarg);
@@ -352,6 +455,9 @@ int main(int argc, char **argv)
         } break;
         case 'v':
             __verbose = 1;
+            break;
+        case 's':
+            __flags |= FLAG_COLLECT_USER_STACK;
             break;
         case 'h':
         default:
@@ -384,6 +490,8 @@ int main(int argc, char **argv)
         fprintf(stderr, "Failed to open BPF skeleton\n");
         return 1;
     }
+
+    skel->bss->__flags = __flags;
 
     /* Load and verify BPF application */
     err = uprobeprofiler_bpf__load(skel);
@@ -483,6 +591,40 @@ int main(int argc, char **argv)
                 printf("---------------------------------| Total=%llu\n",
                        total);
             }
+
+            if (filter_pid != -1 && __flags & FLAG_COLLECT_USER_STACK) {
+
+                if (!__symbolizer) {
+                    __symbolizer = blazesym_new();
+                    if (!__symbolizer) {
+                        fprintf(stderr, "Fail to create a symbolizer\n");
+                    }
+                }
+                __u64 val;
+                uint32_t cur_key = -1, next_key;
+                size_t index = 0, loops = sizeof(__stackid_counts) /
+                                          sizeof(__stackid_counts[0]);
+                while (bpf_map__get_next_key(skel->maps.countsmap, &cur_key,
+                                             &next_key,
+                                             sizeof(next_key)) == 0) {
+                    bpf_map__lookup_elem(skel->maps.countsmap, &next_key,
+                                         sizeof(next_key), &val, sizeof(val),
+                                         0);
+                    __stackid_counts[index].stackid = next_key;
+                    __stackid_counts[index].counter = val;
+                    if (__verbose) {
+                        fprintf(stderr, "[%zu]=(%u %llu)\n", index, next_key,
+                                val);
+                    }
+                    index++;
+                    if (index == loops) break;
+                    cur_key = next_key;
+                }
+                qsort(__stackid_counts, index, sizeof(struct stackid_counts),
+                      cmpstackidcounts);
+                print_stacks(skel, __stackid_counts, index < 10 ? index : 10,
+                             filter_pid);
+            }
         }
         counter++;
         fprintf(stderr, ".");
@@ -491,5 +633,6 @@ int main(int argc, char **argv)
 
 cleanup:
     uprobeprofiler_bpf__destroy(skel);
+    if (__symbolizer) blazesym_free(__symbolizer);
     return -err;
 }
