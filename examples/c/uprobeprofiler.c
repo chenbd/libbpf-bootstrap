@@ -622,10 +622,6 @@ int main(int argc, char **argv)
                                          0);
                     __stackid_counts[index].stackid = next_key;
                     __stackid_counts[index].counter = val;
-                    if (__verbose) {
-                        fprintf(stderr, "[%zu]=(%u %llu)\n", index, next_key,
-                                val);
-                    }
                     index++;
                     if (index == loops) break;
                     cur_key = next_key;
