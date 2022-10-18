@@ -114,6 +114,23 @@ static __always_inline void *map_lookup_and_delete(void *map, const void *key)
     return val;
 }
 
+static __always_inline void reflesh_peek(struct hist *hp, __u64 delta,
+                                         __u32 stackid)
+{
+    size_t i, j;
+    for (i = 0; i < ARRAY_SIZE(hp->peek); ++i) {
+        if (delta >= hp->peek[i].delta) {
+            break;
+        }
+    }
+    if (i == ARRAY_SIZE(hp->peek)) return;
+    for (j = ARRAY_SIZE(hp->peek) - 1; j > i; --j) {
+        hp->peek[j] = hp->peek[j - 1];
+    }
+    hp->peek[i].delta = delta;
+    hp->peek[i].stackid = stackid;
+}
+
 SEC("uretprobe")
 int BPF_KRETPROBE(uretprobeprofiler)
 {
@@ -121,8 +138,9 @@ int BPF_KRETPROBE(uretprobeprofiler)
     __u64 *tsp = map_lookup_and_delete(&clocks, &pid);
     if (!tsp) return 0;
 
+    __u32 userstack = -1;
     if (__flags & FLAG_COLLECT_USER_STACK) {
-        __u32 userstack = collect_userstack_trace(ctx);
+        userstack = collect_userstack_trace(ctx);
         if ((int)userstack >= 0) {
             __u64 *val = bpf_map_lookup_elem(&countsmap, &userstack);
             if (val) {
@@ -141,6 +159,7 @@ int BPF_KRETPROBE(uretprobeprofiler)
 
     __u64 delta = bpf_ktime_get_ns() - *tsp;
     delta /= 1000; /* micro-second */
+    reflesh_peek(hp, delta, userstack);
     __u64 slot = log2l(delta);
     if (slot >= MAX_SLOTS) slot = MAX_SLOTS - 1;
     uint64_t counter = __sync_fetch_and_add(&hp->slots[slot], 1);

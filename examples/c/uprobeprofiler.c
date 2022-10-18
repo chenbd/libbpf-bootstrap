@@ -590,6 +590,15 @@ int main(int argc, char **argv)
                 }
                 printf("---------------------------------| Total=%llu\n",
                        total);
+                for (size_t i = 0; i < ARRAY_SIZE(hists.peek); ++i) {
+                    if (hists.peek[i].delta) {
+                        printf("[%zu]: %llu us", i, hists.peek[i].delta);
+                        if (hists.peek[i].stackid != UINT32_MAX) {
+                            printf("\tstackid: %u", hists.peek[i].stackid);
+                        }
+                        printf("\n");
+                    }
+                }
             }
 
             if (filter_pid != -1 && __flags & FLAG_COLLECT_USER_STACK) {
