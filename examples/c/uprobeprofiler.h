@@ -21,5 +21,6 @@ struct hist {
 #endif
 
 #define FLAG_COLLECT_USER_STACK (0x01)
+#define FLAG_ENABLE_BPF_PRINTK (0x02)
 
 #endif /* __UPROBE_PROFILER_H__ */

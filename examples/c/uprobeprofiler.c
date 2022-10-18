@@ -455,6 +455,7 @@ int main(int argc, char **argv)
         } break;
         case 'v':
             __verbose = 1;
+            __flags |= FLAG_ENABLE_BPF_PRINTK;
             break;
         case 's':
             __flags |= FLAG_COLLECT_USER_STACK;

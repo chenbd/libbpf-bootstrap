@@ -53,6 +53,11 @@ SEC("uprobe")
 int BPF_KPROBE(uprobeprofiler)
 {
     __u64 pid = bpf_get_current_pid_tgid();
+    if (__flags & FLAG_ENABLE_BPF_PRINTK) {
+        bpf_printk("uprobe: parm=(%lx %lx %lx %lx %lx)", PT_REGS_PARM1(ctx),
+                   PT_REGS_PARM2(ctx), PT_REGS_PARM3(ctx), PT_REGS_PARM4(ctx),
+                   PT_REGS_PARM5(ctx));
+    }
     __u64 ts = bpf_ktime_get_ns();
     bpf_map_update_elem(&clocks, &pid, &ts, BPF_ANY);
     return 0;
@@ -163,9 +168,9 @@ int BPF_KRETPROBE(uretprobeprofiler)
     __u64 slot = log2l(delta);
     if (slot >= MAX_SLOTS) slot = MAX_SLOTS - 1;
     uint64_t counter = __sync_fetch_and_add(&hp->slots[slot], 1);
-    if (counter % 8 == 0) {
-        bpf_printk("uretprobe: pid=%d delta=%lu slots[%lu]=%lu ret=%lx\n", pid,
-                   delta, slot, counter, PT_REGS_RC(ctx));
+    if (__flags & FLAG_ENABLE_BPF_PRINTK) {
+        bpf_printk("uretprobe: stackid=%u delta=%lu slots[%lu]=%lu ret=%lx\n",
+                   userstack, delta, slot, counter, PT_REGS_RC(ctx));
     }
 
     return 0;
