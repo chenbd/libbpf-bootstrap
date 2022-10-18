@@ -18,7 +18,7 @@ static struct blazesym *__symbolizer;
 struct stackid_counts {
     __u32 stackid;
     __u64 counter;
-} __stackid_counts[4096];
+} __stackid_counts[MAX_STACK_NUM];
 
 static int libbpf_print_fn(enum libbpf_print_level level, const char *format,
                            va_list args)
@@ -31,6 +31,8 @@ static int libbpf_print_fn(enum libbpf_print_level level, const char *format,
 #else
 #define DEBUG_LOG(fmt, args...)
 #endif
+
+#define LIBBPF_PATCH 0
 
 /**
  * Strip the input str
@@ -205,7 +207,7 @@ static ssize_t get_symbol_offset(const char *symbol, const char *pathname)
         return -EINVAL;
     }
 
-#if 0
+#if LIBBPF_PATCH
     extern long elf_find_func_offset(const char *binary_path, const char *name);
     ssize_t off = elf_find_func_offset(pathname, symbol);
     if (off < 0) {
@@ -509,7 +511,7 @@ int main(int argc, char **argv)
      * section offset and function's offset within .text ELF section.
      */
     if (filter_pid == -1) {
-#if 0
+#if LIBBPF_PATCH
         if (!strchr(pathname, '/')) {
             extern int resolve_full_path(const char *file, char *result,
                                          size_t result_sz);

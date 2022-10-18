@@ -27,14 +27,14 @@ typedef __u64 stack_trace_t[MAX_STACK_DEPTH];
 
 struct {
     __uint(type, BPF_MAP_TYPE_STACK_TRACE);
-    __uint(max_entries, 16384);
+    __uint(max_entries, MAX_STACK_NUM);
     __type(key, __u32);
     __type(value, stack_trace_t);
 } stackmap SEC(".maps");
 
 struct {
     __uint(type, BPF_MAP_TYPE_HASH);
-    __uint(max_entries, 16384);
+    __uint(max_entries, MAX_STACK_NUM);
     __type(key, __u32);
     __type(value, __u64);
 } countsmap SEC(".maps");

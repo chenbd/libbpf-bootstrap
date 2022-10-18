@@ -16,6 +16,10 @@ struct hist {
 #define MAX_STACK_DEPTH 64
 #endif
 
+#ifndef MAX_STACK_NUM
+#define MAX_STACK_NUM 4096
+#endif
+
 #ifndef ARRAY_SIZE
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(a[0]))
 #endif
