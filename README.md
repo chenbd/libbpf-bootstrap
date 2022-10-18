@@ -125,7 +125,7 @@ $ sudo cat /sys/kernel/debug/tracing/trace_pipe
 `uprobe` and `uretprobe` in libbpf lingo. It attached `uprobe` and `uretprobe`
 BPF programs to user specified function by address(with `-a <address>` option)  or function name(with `-n <symbol>` option)
 or library name and function name(with `-f <library:symbol>` option) to specified process(with `-p <pid>` option, -1 for any process).
-The `uprobeprofiler` uses map for collecting function call latency in micro seconds and counter, display in stand output as the following:
+`-s` maybe also be specified to collect stack trace. The `uprobeprofiler` uses map for collecting function call latency in micro seconds and counter, display in stand output as the following:
 
 
 ```shell
@@ -167,6 +167,38 @@ profiling address='(nil)' symbol='malloc' for pid -1:
 	[      32	      63]:       14 (0.04%)
 ---------------------------------| Total=38633
 ```
+
+```shell
+$ sudo ./uprobeprofiler -p 462573 -n free -s
+symbol='free' found in '/usr/lib/x86_64-linux-gnu/libc.so.6' off=a5460
+Successfully started! Please run `sudo cat /sys/kernel/debug/tracing/trace_pipe` to see output of the BPF programs.
+
+profiling address='0x7f759a657460' symbol='free' for pid 462573:
+		Microseconds	 : Count
+---------------------------------| Total=0
+....
+profiling address='0x7f759a657460' symbol='free' for pid 462573:
+		Microseconds	 : Count
+	[       8	      15]:        3 (37.50%)
+	[      16	      31]:        4 (50.00%)
+	[      32	      63]:        1 (12.50%)
+---------------------------------| Total=8
+[0]: 57 us	stackid: 8216
+[1]: 23 us	stackid: 8216
+[2]: 19 us	stackid: 8216
+stackid=8216 counter=4
+  0 [<00007f759a1d99e7>] user_timeout_cb+0x97
+  1 [<00007f759a1d3a06>] h2o_evloop_run+0x86
+  2 [<00007f759a1d9c4e>] client_loop+0x25e
+  3 [<00007f759a646b43>] pthread_condattr_setpshared+0x513
+stackid=8497 counter=4
+  0 [<00007f759a18d0fd>] _ZN4cmap14CMapLocalCache16GetTokenWorkUnitD0Ev+0xd
+  1 [<00007f759a5923e3>] _ZN10foundation9WorkQueue10threadLoopEv+0xe3
+  2 [<00007f759a592464>] _ZN10foundation9WorkQueue10WorkThread10threadLoopEv+0x14
+  3 [<00007f759a593419>] _ZN10foundation6Thread11_threadLoopEPv+0x129
+  4 [<00007f759a646b43>] pthread_condattr_setpshared+0x513
+```
+
 
 ## Rawtracepoint
 
