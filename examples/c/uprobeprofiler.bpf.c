@@ -27,14 +27,14 @@ typedef __u64 stack_trace_t[MAX_STACK_DEPTH];
 
 struct {
     __uint(type, BPF_MAP_TYPE_STACK_TRACE);
-    __uint(max_entries, MAX_STACK_NUM);
+    __uint(max_entries, 16384);
     __type(key, __u32);
     __type(value, stack_trace_t);
 } stackmap SEC(".maps");
 
 struct {
     __uint(type, BPF_MAP_TYPE_HASH);
-    __uint(max_entries, MAX_STACK_NUM);
+    __uint(max_entries, 16384);
     __type(key, __u32);
     __type(value, __u64);
 } countsmap SEC(".maps");
@@ -42,7 +42,8 @@ struct {
 static __always_inline __u32 collect_userstack_trace(struct pt_regs *ctx)
 {
     __u32 stackid = bpf_get_stackid(ctx, &stackmap,
-                                    BPF_F_USER_STACK | BPF_F_FAST_STACK_CMP);
+                                    BPF_F_USER_STACK | BPF_F_FAST_STACK_CMP |
+                                        BPF_F_REUSE_STACKID);
     if ((int)stackid < 0) {
         bpf_printk("bpf_get_stackid error, stackid=%d\n", stackid);
     }

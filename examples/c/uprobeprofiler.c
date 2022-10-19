@@ -614,8 +614,7 @@ int main(int argc, char **argv)
                 }
                 __u64 val;
                 uint32_t cur_key = -1, next_key;
-                size_t index = 0, loops = sizeof(__stackid_counts) /
-                                          sizeof(__stackid_counts[0]);
+                size_t index = 0;
                 while (bpf_map__get_next_key(skel->maps.countsmap, &cur_key,
                                              &next_key,
                                              sizeof(next_key)) == 0) {
@@ -625,7 +624,7 @@ int main(int argc, char **argv)
                     __stackid_counts[index].stackid = next_key;
                     __stackid_counts[index].counter = val;
                     index++;
-                    if (index == loops) break;
+                    if (index == ARRAY_SIZE(__stackid_counts)) break;
                     cur_key = next_key;
                 }
                 qsort(__stackid_counts, index, sizeof(struct stackid_counts),
