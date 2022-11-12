@@ -10,6 +10,7 @@ char LICENSE[] SEC("license") = "Dual BSD/GPL";
 
 pid_t filter_pid = 0;
 __u32 filter_syscall = 0;
+uint32_t __flags = 0;
 
 struct {
     __uint(type, BPF_MAP_TYPE_HASH);
@@ -25,11 +26,13 @@ struct {
     __uint(max_entries, 1);
 } hists SEC(".maps");
 
+static struct hist initial_hist = {0};
+
 SEC("raw_tracepoint/sys_enter")
 int sys_enter(struct bpf_raw_tracepoint_args *ctx)
 {
     __u64 id = ctx->args[1];
-    if (id != filter_syscall) return 0;
+    if (filter_syscall != -1 && id != filter_syscall) return 0;
 
     __u64 pid = bpf_get_current_pid_tgid();
     if (filter_pid > 0 && (pid_t)(pid >> 32) != filter_pid) return 0;
@@ -43,8 +46,17 @@ int sys_enter(struct bpf_raw_tracepoint_args *ctx)
      *  %rdi, %rsi, %rdx, %rcx, %r8 and %r9.
      * The kernel interface uses %rdi, %rsi, %rdx, %r10, %r8 and %r9.
      */
-    struct pt_regs *regs = (struct pt_regs *)ctx->args[0];
-
+    struct pt_regs *args = (struct pt_regs *)ctx->args[0];
+    if (__flags & FLAG_ENABLE_BPF_PRINTK) {
+        __u64 di = BPF_CORE_READ(args, di);
+        __u64 si = BPF_CORE_READ(args, si);
+        __u64 dx = BPF_CORE_READ(args, dx);
+        __u64 r10 = BPF_CORE_READ(args, r10);
+        __u64 r8 = BPF_CORE_READ(args, r8);
+        __u64 r9 = BPF_CORE_READ(args, r9);
+        bpf_printk("sys_enter[%lu] di=%lu si=%lx dx=%lx r10=%lx r8=%lx r9=%lx",
+                   id, di, si, dx, r10, r8, r9);
+    }
     __u64 ts = bpf_ktime_get_ns();
     bpf_map_update_elem(&clocks, &pid, &ts, BPF_ANY);
 
@@ -112,7 +124,8 @@ int sys_exit(struct bpf_raw_tracepoint_args *ctx)
 {
     struct pt_regs *args = (struct pt_regs *)ctx->args[0];
     __u64 id = BPF_CORE_READ(args, orig_ax);
-    if (id != filter_syscall) return 0;
+    if (filter_syscall != -1 && id != filter_syscall) return 0;
+    if (id >= MAX_SYSCALLS) return 0;
 
     __u64 pid = bpf_get_current_pid_tgid();
     if (filter_pid > 0 && (pid_t)(pid >> 32) != filter_pid) return 0;
@@ -120,7 +133,6 @@ int sys_exit(struct bpf_raw_tracepoint_args *ctx)
     __u64 *tsp = map_lookup_and_delete(&clocks, &pid);
     if (!tsp) return 0;
 
-    struct hist initial_hist = {};
     __u32 index = 0;
     struct hist *hp = map_lookup_or_try_init(&hists, &index, &initial_hist);
     if (!hp) return 0;
@@ -129,11 +141,10 @@ int sys_exit(struct bpf_raw_tracepoint_args *ctx)
     delta /= 1000; /* micro-second */
     __u64 slot = log2l(delta);
     if (slot >= MAX_SLOTS) slot = MAX_SLOTS - 1;
-    uint64_t counter = __sync_fetch_and_add(&hp->slots[slot], 1);
-    if (counter % 10 == 0) {
-        bpf_printk(
-            "sys_exit: pid=%d filter_syscall=%u delta=%lu slots[%lu]=%lu\n",
-            pid, filter_syscall, delta, slot, counter);
+    uint64_t counter = __sync_fetch_and_add(&hp->slots[id][slot], 1);
+    if (__flags & FLAG_ENABLE_BPF_PRINTK) {
+        bpf_printk("sys_exit[%lu]: delta=%lu slots[%lu]=%lu\n", id, delta, slot,
+                   counter);
     }
 
     return 0;

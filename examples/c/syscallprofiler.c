@@ -8,9 +8,9 @@
 
 #include "syscallprofiler.skel.h"
 #include "syscallprofiler.h"
-#ifdef __x86_64__
-#include "syscall_table/x86_64/syscall_table.h"
-#endif
+#include "syscall_table/syscall_table.h"
+
+static int __verbose = 0;
 
 static int libbpf_print_fn(enum libbpf_print_level level, const char *format,
                            va_list args)
@@ -24,15 +24,37 @@ static void show_help(const char *progname)
            progname);
 }
 
+static void __show_hist(const struct hist *hists, uint32_t syscall,
+                        pid_t filter_pid)
+{
+    __u64 total = 0;
+    for (int i = 0; i < MAX_SLOTS; ++i) {
+        total += hists->slots[syscall][i];
+    }
+    if (total == 0) return;
+    printf("\nprofiling syscall=%u(%s) for pid %d:\n\t\tMicro"
+           "seconds\t : Count\n",
+           syscall, syscall_name(syscall), filter_pid);
+    for (int i = 0; i < MAX_SLOTS; ++i) {
+        if (hists->slots[syscall][i] != 0) {
+            printf("\t[%8llu\t%8llu]: %8llu (%.02f%%)\n",
+                   (i == 0) ? 0 : (1ull << i), (1ull << (i + 1)) - 1,
+                   hists->slots[syscall][i],
+                   hists->slots[syscall][i] * 100.0 / total);
+        }
+    }
+    printf("---------------------------------| Total=%llu\n", total);
+}
+
 int main(int argc, char **argv)
 {
     struct syscallprofiler_bpf *skel;
     int err;
     int argp = 0;
-    int verbose = 0;
     /* Profiling write() syscall from our process by default */
     uint32_t filter_syscall = SYS_write;
     int filter_pid = 0;
+    uint32_t __flags = 0;
 
     while ((argp = getopt(argc, argv, "hvp:c:n:")) != -1) {
         switch (argp) {
@@ -50,7 +72,8 @@ int main(int argc, char **argv)
             }
             break;
         case 'v':
-            verbose = 1;
+            __verbose = 1;
+            __flags |= FLAG_ENABLE_BPF_PRINTK;
             break;
         case 'h':
         default:
@@ -62,7 +85,7 @@ int main(int argc, char **argv)
 
     libbpf_set_strict_mode(LIBBPF_STRICT_ALL);
     /* Set up libbpf errors and debug info callback */
-    if (verbose) libbpf_set_print(libbpf_print_fn);
+    if (__verbose) libbpf_set_print(libbpf_print_fn);
 
     /* Open BPF application */
     skel = syscallprofiler_bpf__open();
@@ -73,6 +96,7 @@ int main(int argc, char **argv)
     /* Fill parameters for BPF program */
     skel->bss->filter_pid = filter_pid;         /* Process to profiling  */
     skel->bss->filter_syscall = filter_syscall; /* Syscall to profiling  */
+    skel->bss->__flags = __flags;
 
     /* Load & verify BPF programs */
     err = syscallprofiler_bpf__load(skel);
@@ -99,25 +123,16 @@ int main(int argc, char **argv)
             struct hist hists;
             int r = bpf_map__lookup_elem(skel->maps.hists, &key, sizeof(key),
                                          &hists, sizeof(hists), 0);
-            if (r == 0) {
-                printf("\nprofiling syscall=%u(%s) for pid %d:\n\t\tMicro"
-                       "seconds\t : Count\n",
-                       filter_syscall, syscall_name(filter_syscall),
-                       filter_pid);
-                __u64 total = 0;
-                for (int i = 0; i < MAX_SLOTS; ++i) {
-                    total += hists.slots[i];
+            if (r != 0) {
+                fprintf(stderr, "bpf_map__lookup_elem error, r=%d\n", r);
+                goto cleanup;
+            }
+            if (filter_syscall != UINT32_MAX) {
+                __show_hist(&hists, filter_syscall, filter_pid);
+            } else {
+                for (uint32_t syscall = 0; syscall < MAX_SYSCALLS; ++syscall) {
+                    __show_hist(&hists, syscall, filter_pid);
                 }
-                for (int i = 0; i < MAX_SLOTS; ++i) {
-                    if (hists.slots[i] != 0) {
-                        printf("\t[%8llu\t%8llu]: %8llu (%.02f%%)\n",
-                               (i == 0) ? 0 : (1ull << i),
-                               (1ull << (i + 1)) - 1, hists.slots[i],
-                               hists.slots[i] * 100.0 / total);
-                    }
-                }
-                printf("---------------------------------| Total=%llu\n",
-                       total);
             }
         }
         counter++;
