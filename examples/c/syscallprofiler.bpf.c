@@ -28,6 +28,41 @@ struct {
 
 static struct hist initial_hist = {0};
 
+struct timespec;
+
+static inline void hook_write(int fd, const void *buf, size_t count)
+{
+    uint8_t _buf[16] = {0};
+    if (count > sizeof(_buf)) count = sizeof(_buf);
+    bpf_core_read_user(_buf, count, buf);
+    for (size_t i = 0; i < count; ++i) {
+        bpf_printk("hook_write: fd=%d count=%lu buf[%lu]=%x", fd, count, i,
+                   _buf[i]);
+    }
+}
+
+static inline void hook_clock_nanosleep(clockid_t clockid, int flags,
+                                        const struct timespec *request,
+                                        struct timespec *remain)
+{
+    const struct __kernel_timespec *r = (struct __kernel_timespec *)request;
+    long tv_sec = BPF_CORE_READ_USER(r, tv_sec);
+    long tv_nsec = BPF_CORE_READ_USER(r, tv_nsec);
+    bpf_printk(
+        "hook_clock_nanosleep: clockid=%d flag=%d tv_sec=%lu tv_nsec=%lu",
+        clockid, flags, tv_sec, tv_nsec);
+}
+
+static void hook_bpf(int cmd, union bpf_attr *attr, unsigned int size)
+{
+    bpf_printk("hook_bpf: cmd=%d size=%u", cmd, size);
+    if (cmd >= BPF_MAP_LOOKUP_ELEM && cmd <= BPF_MAP_GET_NEXT_KEY) {
+        __u32 map_fd = BPF_CORE_READ_USER(attr, map_fd);
+        __u64 key = BPF_CORE_READ_USER(attr, key);
+        bpf_printk("hook_bpf: map_fd=%d key=%lx", map_fd, key);
+    }
+}
+
 SEC("raw_tracepoint/sys_enter")
 int sys_enter(struct bpf_raw_tracepoint_args *ctx)
 {
@@ -56,6 +91,15 @@ int sys_enter(struct bpf_raw_tracepoint_args *ctx)
         __u64 r9 = BPF_CORE_READ(args, r9);
         bpf_printk("sys_enter[%lu] di=%lu si=%lx dx=%lx r10=%lx r8=%lx r9=%lx",
                    id, di, si, dx, r10, r8, r9);
+        // TODO: use table
+        if (id == 1) {
+            hook_write(di, (void *)si, dx);
+        } else if (id == 230) {
+            hook_clock_nanosleep(di, si, (const struct timespec *)dx,
+                                 (struct timespec *)r10);
+        } else if (id == 321) {
+            hook_bpf(di, (union bpf_attr *)si, dx);
+        }
     }
     __u64 ts = bpf_ktime_get_ns();
     bpf_map_update_elem(&clocks, &pid, &ts, BPF_ANY);
