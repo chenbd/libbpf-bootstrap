@@ -80,6 +80,64 @@ static void sys_enter_unlinkat(int dirfd, const char *pathname, int flags)
     bpf_printk("sys_enter_unlinkat: dirfd=%d pathname='%s' flag=%x", dirfd, tmp,
                flags);
 }
+static void sys_enter_stat(const char *pathname, struct stat *statbuf)
+{
+    char tmp[256] = {0};
+    bpf_core_read_user_str(tmp, sizeof(tmp), pathname);
+    bpf_printk("sys_enter_stat: pathname='%s' statbuf=%x", tmp, statbuf);
+}
+
+static void sys_enter_fstat(int fd, struct stat *statbuf)
+{
+    bpf_printk("sys_enter_fstat: fd=%d statbuf=%x", fd, statbuf);
+}
+static void sys_enter_lstat(const char *pathname, struct stat *statbuf)
+{
+    char tmp[256] = {0};
+    bpf_core_read_user_str(tmp, sizeof(tmp), pathname);
+    bpf_printk("sys_enter_lstat: pathname='%s' statbuf=%x", tmp, statbuf);
+}
+static void sys_enter_fstatat(int dirfd, const char *pathname,
+                              struct stat *statbuf, int flags)
+{
+    char tmp[256] = {0};
+    bpf_core_read_user_str(tmp, sizeof(tmp), pathname);
+    bpf_printk("sys_enter_fstatat: dirfd=%d pathname='%s' statbuf=%lx flags=%x",
+               dirfd, tmp, statbuf, flags);
+}
+static void sys_enter_lseek(int fd, off_t offset, int whence)
+{
+    bpf_printk("sys_enter_lseek: fd=%d offset=%lx whence=%d", fd, offset,
+               whence);
+}
+static void sys_enter_mprotect(void *addr, size_t len, int prot)
+{
+    bpf_printk("sys_enter_mprotect: addr=%lx size=%lx prot=%d", addr, len,
+               prot);
+}
+static void sys_enter_readv(int fd, const struct iovec *iov, int iovcnt)
+{
+    bpf_printk("sys_enter_readv: fd=%d iovcnt=%x iov=%lx", fd, iovcnt, iov);
+}
+static void sys_enter_writev(int fd, const struct iovec *iov, int iovcnt)
+{
+    bpf_printk("sys_enter_writev: fd=%d iovcnt=%x iov=%lx", fd, iovcnt, iov);
+}
+static void sys_enter_access(const char *pathname, int mode)
+{
+    char tmp[256] = {0};
+    bpf_core_read_user_str(tmp, sizeof(tmp), pathname);
+    bpf_printk("sys_enter_access: pathname='%s' mode=%lx", tmp, mode);
+}
+static void sys_enter_pipe(int pipefd[2])
+{
+    bpf_printk("sys_enter_pipe: pipefd=%lx", pipefd);
+}
+static void sys_enter_pipe2(int pipefd[2], int flags)
+{
+    bpf_printk("sys_enter_pipe2: pipefd=%lx flags=%x", pipefd, flags);
+}
+static void sys_enter_sched_yield(void) { bpf_printk("sys_enter_sched_yield"); }
 static void sys_enter_unlink(const char *pathname)
 {
     char tmp[256] = {0};
@@ -101,9 +159,49 @@ static void sys_enter_mmap(void *addr, size_t length, int prot, int flags,
         "sys_enter_mmap: addr=%lx length=%lx prot=%x flags=%x fd=%d offset=%lx",
         addr, length, prot, flags, fd, offset);
 }
+static void sys_enter_mremap(void *old_address, size_t old_size,
+                             size_t new_size, int flags)
+{
+    bpf_printk(
+        "sys_enter_mremap: old_address=%lx old_size=%lx new_size=%lx flags=%x",
+        old_address, old_size, new_size, flags);
+}
+static void sys_enter_msync(void *addr, size_t length, int flags)
+{
+    bpf_printk("sys_enter_msync: addr=%lx length=%lx flags=%x", addr, length,
+               flags);
+}
+static void sys_enter_madvise(void *addr, size_t length, int advice)
+{
+    bpf_printk("sys_enter_madvise: addr=%lx length=%lx advice=%d", addr, length,
+               advice);
+}
 static void sys_enter_munmap(void *addr, size_t length)
 {
     bpf_printk("sys_enter_munmap: addr=%lx length=%lx", addr, length);
+}
+static void sys_enter_dup(int oldfd)
+{
+    bpf_printk("sys_enter_dup: oldfd=%d", oldfd);
+}
+static void sys_enter_dup2(int oldfd, int newfd)
+{
+    bpf_printk("sys_enter_dup2: oldfd=%d nnewfd=%d", oldfd, newfd);
+}
+static void sys_enter_dup3(int oldfd, int newfd, int flags)
+{
+    bpf_printk("sys_enter_dup3: oldfd=%d nnewfd=%d flags=%x", oldfd, newfd,
+               flags);
+}
+static void sys_enter_pause(void) { bpf_printk("sys_enter_pause"); }
+static void sys_enter_nanosleep(const struct timespec *req,
+                                struct timespec *rem)
+{
+    const struct __kernel_timespec *r = (struct __kernel_timespec *)req;
+    long tv_sec = BPF_CORE_READ_USER(r, tv_sec);
+    long tv_nsec = BPF_CORE_READ_USER(r, tv_nsec);
+    bpf_printk("sys_enter_nanosleep: req=%lx tv_sec=%lu tv_nsec=%lu", req,
+               tv_sec, tv_nsec);
 }
 static void
 sys_enter_futex(uint32_t *uaddr, int futex_op, uint32_t val,
@@ -168,14 +266,7 @@ static inline void sys_enter_clock_nanosleep(clockid_t clockid, int flags,
         "sys_enter_clock_nanosleep: clockid=%d flag=%d tv_sec=%lu tv_nsec=%lu",
         clockid, flags, tv_sec, tv_nsec);
 }
-static void sys_enter_fstatat(int dirfd, const char *pathname,
-                              struct stat *statbuf, int flags)
-{
-    char tmp[256] = {0};
-    bpf_core_read_user_str(tmp, sizeof(tmp), pathname);
-    bpf_printk("sys_enter_fstatat: dirfd=%d pathname='%s' statbuf=%lx flags=%x",
-               dirfd, tmp, statbuf, flags);
-}
+
 static void sys_enter_bpf(int cmd, union bpf_attr *attr, unsigned int size)
 {
     bpf_printk("sys_enter_bpf: cmd=%d size=%u", cmd, size);
@@ -205,6 +296,42 @@ static inline void __syscall_enter(__u64 id, __u64 di, __u64 si, __u64 dx,
     case __NR_unlinkat: {
         sys_enter_unlinkat(di, (void *)si, dx);
     } break;
+    case __NR_stat: {
+        sys_enter_stat((void *)di, (void *)si);
+    } break;
+    case __NR_fstat: {
+        sys_enter_fstat(di, (void *)si);
+    } break;
+    case __NR_lstat: {
+        sys_enter_lstat((void *)di, (void *)si);
+    } break;
+    case __NR_newfstatat: {
+        sys_enter_fstatat(di, (void *)si, (void *)dx, r10);
+    } break;
+    case __NR_lseek: {
+        sys_enter_lseek(di, si, dx);
+    } break;
+    case __NR_mprotect: {
+        sys_enter_mprotect((void *)di, si, dx);
+    } break;
+    case __NR_readv: {
+        sys_enter_readv(di, (void *)si, dx);
+    } break;
+    case __NR_writev: {
+        sys_enter_writev(di, (void *)si, dx);
+    } break;
+    case __NR_access: {
+        sys_enter_access((void *)di, si);
+    } break;
+    case __NR_pipe: {
+        sys_enter_pipe((void *)di);
+    } break;
+    case __NR_pipe2: {
+        sys_enter_pipe2((void *)di, si);
+    } break;
+    case __NR_sched_yield: {
+        sys_enter_sched_yield();
+    } break;
     case __NR_unlink: {
         sys_enter_unlink((void *)di);
     } break;
@@ -217,8 +344,32 @@ static inline void __syscall_enter(__u64 id, __u64 di, __u64 si, __u64 dx,
     case __NR_mmap: {
         sys_enter_mmap((void *)di, si, dx, r10, r8, r9);
     } break;
+    case __NR_mremap: {
+        sys_enter_mremap((void *)di, si, dx, r10);
+    } break;
+    case __NR_msync: {
+        sys_enter_msync((void *)di, si, dx);
+    } break;
+    case __NR_madvise: {
+        sys_enter_madvise((void *)di, si, dx);
+    } break;
     case __NR_munmap: {
         sys_enter_munmap((void *)di, si);
+    } break;
+    case __NR_dup: {
+        sys_enter_dup(di);
+    } break;
+    case __NR_dup2: {
+        sys_enter_dup2(di, si);
+    } break;
+    case __NR_dup3: {
+        sys_enter_dup3(di, si, dx);
+    } break;
+    case __NR_pause: {
+        sys_enter_pause();
+    } break;
+    case __NR_nanosleep: {
+        sys_enter_nanosleep((void *)di, (void *)si);
     } break;
     case __NR_futex: {
         sys_enter_futex((void *)di, si, dx, (void *)r10, (void *)r8, r9);
@@ -244,9 +395,6 @@ static inline void __syscall_enter(__u64 id, __u64 di, __u64 si, __u64 dx,
     case __NR_clock_nanosleep: {
         sys_enter_clock_nanosleep(di, si, (const struct timespec *)dx,
                                   (struct timespec *)r10);
-    } break;
-    case __NR_newfstatat: {
-        sys_enter_fstatat(di, (void *)si, (void *)dx, r10);
     } break;
     case __NR_bpf: {
         sys_enter_bpf(di, (union bpf_attr *)si, dx);
