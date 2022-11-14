@@ -102,6 +102,18 @@ static void sys_enter_munmap(void *addr, size_t length)
 {
     bpf_printk("sys_enter_munmap: addr=%lx length=%lu", addr, length);
 }
+static void
+sys_enter_futex(uint32_t *uaddr, int futex_op, uint32_t val,
+                const struct timespec *timeout, /* or: uint32_t val2 */
+                uint32_t *uaddr2, uint32_t val3)
+{
+    const struct __kernel_timespec *r = (struct __kernel_timespec *)timeout;
+    long tv_sec = BPF_CORE_READ_USER(r, tv_sec);
+    long tv_nsec = BPF_CORE_READ_USER(r, tv_nsec);
+    bpf_printk("sys_enter_futex: uaddr=%lx futex_op=%d val=%u tv_sec=%lu "
+               "tv_nsec=%lu uaddr2=%lx val3=%u",
+               uaddr, futex_op, val, tv_sec, tv_nsec, uaddr2, val3);
+}
 static inline void sys_enter_clock_nanosleep(clockid_t clockid, int flags,
                                              const struct timespec *request,
                                              struct timespec *remain)
@@ -131,8 +143,8 @@ static void sys_enter_bpf(int cmd, union bpf_attr *attr, unsigned int size)
     }
 }
 
-static inline void __syscall_enter_func(__u64 id, __u64 di, __u64 si, __u64 dx,
-                                        __u64 r10, __u64 r8, __u64 r9)
+static inline void __syscall_enter(__u64 id, __u64 di, __u64 si, __u64 dx,
+                                   __u64 r10, __u64 r8, __u64 r9)
 {
     switch (id) {
     case __NR_read: {
@@ -164,6 +176,9 @@ static inline void __syscall_enter_func(__u64 id, __u64 di, __u64 si, __u64 dx,
     } break;
     case __NR_munmap: {
         sys_enter_munmap((void *)di, si);
+    } break;
+    case __NR_futex: {
+        sys_enter_futex((void *)di, si, dx, (void *)r10, (void *)r8, r9);
     } break;
     case __NR_clock_nanosleep: {
         sys_enter_clock_nanosleep(di, si, (const struct timespec *)dx,
@@ -206,9 +221,9 @@ int sys_enter(struct bpf_raw_tracepoint_args *ctx)
         __u64 r10 = BPF_CORE_READ(args, r10);
         __u64 r8 = BPF_CORE_READ(args, r8);
         __u64 r9 = BPF_CORE_READ(args, r9);
-        bpf_printk("sys_enter[%lu] di=%lu si=%lx dx=%lx r10=%lx r8=%lx r9=%lx",
+        bpf_printk("sys_enter[%lu] di=%lx si=%lx dx=%lx r10=%lx r8=%lx r9=%lx",
                    id, di, si, dx, r10, r8, r9);
-        __syscall_enter_func(id, di, si, dx, r10, r8, r9);
+        __syscall_enter(id, di, si, dx, r10, r8, r9);
     }
     __u64 ts = bpf_ktime_get_ns();
     bpf_map_update_elem(&clocks, &pid, &ts, BPF_ANY);
@@ -296,8 +311,16 @@ int sys_exit(struct bpf_raw_tracepoint_args *ctx)
     if (slot >= MAX_SLOTS) slot = MAX_SLOTS - 1;
     uint64_t counter = __sync_fetch_and_add(&hp->slots[id][slot], 1);
     if (__flags & FLAG_ENABLE_BPF_PRINTK) {
-        bpf_printk("sys_exit[%lu]: delta=%lu slots[%lu]=%lu\n", id, delta, slot,
-                   counter);
+        __u64 ax = BPF_CORE_READ(args, ax);
+        __u64 di = BPF_CORE_READ(args, di);
+        __u64 si = BPF_CORE_READ(args, si);
+        __u64 dx = BPF_CORE_READ(args, dx);
+        __u64 r10 = BPF_CORE_READ(args, r10);
+        __u64 r8 = BPF_CORE_READ(args, r8);
+        __u64 r9 = BPF_CORE_READ(args, r9);
+        bpf_printk("sys_exit[%lu]: ax=%lx di=%lx si=%lx dx=%lx r10=%lx r8=%lx "
+                   "r9=%lx delta=%lu slots[%lu]=%lu\n",
+                   id, ax, di, si, dx, r10, r8, r9, delta, slot, counter);
     }
 
     return 0;
