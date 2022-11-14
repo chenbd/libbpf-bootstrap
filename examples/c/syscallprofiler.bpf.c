@@ -30,7 +30,7 @@ struct {
 static struct hist initial_hist = {0};
 struct timespec;
 
-static inline void hook_write(int fd, const void *buf, size_t _count)
+static inline void sys_enter_write(int fd, const void *buf, size_t _count)
 {
     size_t count = _count;
     uint8_t _buf[16] = {0};
@@ -40,51 +40,52 @@ static inline void hook_write(int fd, const void *buf, size_t _count)
     size_t index = 0;
     for (size_t i = 0; i < count; ++i) {
         long r = BPF_SNPRINTF(&tmp[index], sizeof(tmp) - index, "%x ", _buf[i]);
+        if (r < 0) break;
         if (r == 3) {
             index += 2;
         } else {
             index += 3;
         }
     }
-    bpf_printk("hook_write: fd=%d count=%lu buf=%s %s", fd, _count, tmp,
+    bpf_printk("sys_enter_write: fd=%d count=%lu buf=%s %s", fd, _count, tmp,
                _count != count ? "..." : "");
 }
 
-static inline void hook_clock_nanosleep(clockid_t clockid, int flags,
-                                        const struct timespec *request,
-                                        struct timespec *remain)
+static inline void sys_enter_clock_nanosleep(clockid_t clockid, int flags,
+                                             const struct timespec *request,
+                                             struct timespec *remain)
 {
     const struct __kernel_timespec *r = (struct __kernel_timespec *)request;
     long tv_sec = BPF_CORE_READ_USER(r, tv_sec);
     long tv_nsec = BPF_CORE_READ_USER(r, tv_nsec);
     bpf_printk(
-        "hook_clock_nanosleep: clockid=%d flag=%d tv_sec=%lu tv_nsec=%lu",
+        "sys_enter_clock_nanosleep: clockid=%d flag=%d tv_sec=%lu tv_nsec=%lu",
         clockid, flags, tv_sec, tv_nsec);
 }
 
-static void hook_bpf(int cmd, union bpf_attr *attr, unsigned int size)
+static void sys_enter_bpf(int cmd, union bpf_attr *attr, unsigned int size)
 {
-    bpf_printk("hook_bpf: cmd=%d size=%u", cmd, size);
+    bpf_printk("sys_enter_bpf: cmd=%d size=%u", cmd, size);
     if (cmd >= BPF_MAP_LOOKUP_ELEM && cmd <= BPF_MAP_GET_NEXT_KEY) {
         __u32 map_fd = BPF_CORE_READ_USER(attr, map_fd);
         __u64 key = BPF_CORE_READ_USER(attr, key);
-        bpf_printk("hook_bpf: map_fd=%d key=%lx", map_fd, key);
+        bpf_printk("sys_enter_bpf: map_fd=%d key=%lx", map_fd, key);
     }
 }
 
-static inline void __hook_syscall_func(__u64 id, __u64 di, __u64 si, __u64 dx,
-                                       __u64 r10, __u64 r8, __u64 r9)
+static inline void __syscall_enter_func(__u64 id, __u64 di, __u64 si, __u64 dx,
+                                        __u64 r10, __u64 r8, __u64 r9)
 {
     switch (id) {
     case __NR_write: {
-        hook_write(di, (void *)si, dx);
+        sys_enter_write(di, (void *)si, dx);
     } break;
     case __NR_clock_nanosleep: {
-        hook_clock_nanosleep(di, si, (const struct timespec *)dx,
-                             (struct timespec *)r10);
+        sys_enter_clock_nanosleep(di, si, (const struct timespec *)dx,
+                                  (struct timespec *)r10);
     } break;
     case __NR_bpf: {
-        hook_bpf(di, (union bpf_attr *)si, dx);
+        sys_enter_bpf(di, (union bpf_attr *)si, dx);
     } break;
     default:
         break;
@@ -119,8 +120,7 @@ int sys_enter(struct bpf_raw_tracepoint_args *ctx)
         __u64 r9 = BPF_CORE_READ(args, r9);
         bpf_printk("sys_enter[%lu] di=%lu si=%lx dx=%lx r10=%lx r8=%lx r9=%lx",
                    id, di, si, dx, r10, r8, r9);
-
-        __hook_syscall_func(id, di, si, dx, r10, r8, r9);
+        __syscall_enter_func(id, di, si, dx, r10, r8, r9);
     }
     __u64 ts = bpf_ktime_get_ns();
     bpf_map_update_elem(&clocks, &pid, &ts, BPF_ANY);
