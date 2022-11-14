@@ -3,7 +3,7 @@
 #ifndef __SYSCALLID_H__
 #define __SYSCALLID_H__
 
-#ifdef __x86_64__
+#if defined(__TARGET_ARCH_x86) || defined(__x86_64__)
 #include "x86_64/syscall_id-x86_64.h"
 #endif
 

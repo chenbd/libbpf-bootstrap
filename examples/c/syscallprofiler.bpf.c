@@ -28,18 +28,26 @@ struct {
 } hists SEC(".maps");
 
 static struct hist initial_hist = {0};
-
 struct timespec;
 
-static inline void hook_write(int fd, const void *buf, size_t count)
+static inline void hook_write(int fd, const void *buf, size_t _count)
 {
+    size_t count = _count;
     uint8_t _buf[16] = {0};
+    char tmp[56] = {0};
     if (count > sizeof(_buf)) count = sizeof(_buf);
     bpf_core_read_user(_buf, count, buf);
+    size_t index = 0;
     for (size_t i = 0; i < count; ++i) {
-        bpf_printk("hook_write: fd=%d count=%lu buf[%lu]=%x", fd, count, i,
-                   _buf[i]);
+        long r = BPF_SNPRINTF(&tmp[index], sizeof(tmp) - index, "%x ", _buf[i]);
+        if (r == 3) {
+            index += 2;
+        } else {
+            index += 3;
+        }
     }
+    bpf_printk("hook_write: fd=%d count=%lu buf=%s %s", fd, _count, tmp,
+               _count != count ? "..." : "");
 }
 
 static inline void hook_clock_nanosleep(clockid_t clockid, int flags,
@@ -64,6 +72,25 @@ static void hook_bpf(int cmd, union bpf_attr *attr, unsigned int size)
     }
 }
 
+static inline void __hook_syscall_func(__u64 id, __u64 di, __u64 si, __u64 dx,
+                                       __u64 r10, __u64 r8, __u64 r9)
+{
+    switch (id) {
+    case __NR_write: {
+        hook_write(di, (void *)si, dx);
+    } break;
+    case __NR_clock_nanosleep: {
+        hook_clock_nanosleep(di, si, (const struct timespec *)dx,
+                             (struct timespec *)r10);
+    } break;
+    case __NR_bpf: {
+        hook_bpf(di, (union bpf_attr *)si, dx);
+    } break;
+    default:
+        break;
+    }
+}
+
 SEC("raw_tracepoint/sys_enter")
 int sys_enter(struct bpf_raw_tracepoint_args *ctx)
 {
@@ -76,11 +103,11 @@ int sys_enter(struct bpf_raw_tracepoint_args *ctx)
     /**
      * https://github.com/DavadDi/bpf_study/blob/master/the-art-of-writing-ebpf-programs-a-primer/index.md
      * The System V ABI mandates the protocol for exchanging arguments
-     * during a system call invocation between user and kernel, and the exchange
-     * happens via CPU registers. In particular, the convention is:
-     * User-level applications use as integer registers for passing the sequence
-     *  %rdi, %rsi, %rdx, %rcx, %r8 and %r9.
-     * The kernel interface uses %rdi, %rsi, %rdx, %r10, %r8 and %r9.
+     * during a system call invocation between user and kernel, and the
+     * exchange happens via CPU registers. In particular, the convention is:
+     * User-level applications use as integer registers for passing the
+     * sequence %rdi, %rsi, %rdx, %rcx, %r8 and %r9. The kernel interface
+     * uses %rdi, %rsi, %rdx, %r10, %r8 and %r9.
      */
     struct pt_regs *args = (struct pt_regs *)ctx->args[0];
     if (__flags & FLAG_ENABLE_BPF_PRINTK) {
@@ -92,15 +119,8 @@ int sys_enter(struct bpf_raw_tracepoint_args *ctx)
         __u64 r9 = BPF_CORE_READ(args, r9);
         bpf_printk("sys_enter[%lu] di=%lu si=%lx dx=%lx r10=%lx r8=%lx r9=%lx",
                    id, di, si, dx, r10, r8, r9);
-        // TODO: use table
-        if (id == 1) {
-            hook_write(di, (void *)si, dx);
-        } else if (id == 230) {
-            hook_clock_nanosleep(di, si, (const struct timespec *)dx,
-                                 (struct timespec *)r10);
-        } else if (id == 321) {
-            hook_bpf(di, (union bpf_attr *)si, dx);
-        }
+
+        __hook_syscall_func(id, di, si, dx, r10, r8, r9);
     }
     __u64 ts = bpf_ktime_get_ns();
     bpf_map_update_elem(&clocks, &pid, &ts, BPF_ANY);
