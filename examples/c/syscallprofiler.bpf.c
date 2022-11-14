@@ -29,11 +29,14 @@ struct {
 
 static struct hist initial_hist = {0};
 struct timespec;
+struct timeval;
 typedef __kernel_mode_t mode_t;
+typedef __kernel_fd_set fd_set;
+typedef unsigned long int nfds_t;
 
 static inline void sys_enter_read(int fd, const void *buf, size_t count)
 {
-    bpf_printk("sys_enter_read: fd=%d count=%lu buf=%lx ", fd, count, buf);
+    bpf_printk("sys_enter_read: fd=%d count=%lx buf=%lx ", fd, count, buf);
 }
 static inline void sys_enter_write(int fd, const void *buf, size_t _count)
 {
@@ -52,7 +55,7 @@ static inline void sys_enter_write(int fd, const void *buf, size_t _count)
             index += 3;
         }
     }
-    bpf_printk("sys_enter_write: fd=%d count=%lu buf=%s %s", fd, _count, tmp,
+    bpf_printk("sys_enter_write: fd=%d count=%lx buf=%s %s", fd, _count, tmp,
                _count != count ? "..." : "");
 }
 static void sys_enter_openat(int dirfd, const char *pathname, int flags,
@@ -95,12 +98,12 @@ static void sys_enter_mmap(void *addr, size_t length, int prot, int flags,
                            int fd, off_t offset)
 {
     bpf_printk(
-        "sys_enter_mmap: addr=%lx length=%lu prot=%x flags=%x fd=%d offset=%lu",
+        "sys_enter_mmap: addr=%lx length=%lx prot=%x flags=%x fd=%d offset=%lx",
         addr, length, prot, flags, fd, offset);
 }
 static void sys_enter_munmap(void *addr, size_t length)
 {
-    bpf_printk("sys_enter_munmap: addr=%lx length=%lu", addr, length);
+    bpf_printk("sys_enter_munmap: addr=%lx length=%lx", addr, length);
 }
 static void
 sys_enter_futex(uint32_t *uaddr, int futex_op, uint32_t val,
@@ -110,9 +113,49 @@ sys_enter_futex(uint32_t *uaddr, int futex_op, uint32_t val,
     const struct __kernel_timespec *r = (struct __kernel_timespec *)timeout;
     long tv_sec = BPF_CORE_READ_USER(r, tv_sec);
     long tv_nsec = BPF_CORE_READ_USER(r, tv_nsec);
-    bpf_printk("sys_enter_futex: uaddr=%lx futex_op=%d val=%u tv_sec=%lu "
-               "tv_nsec=%lu uaddr2=%lx val3=%u",
+    bpf_printk("sys_enter_futex: uaddr=%lx futex_op=%x val=%x tv_sec=%lu "
+               "tv_nsec=%lu uaddr2=%lx val3=%x",
                uaddr, futex_op, val, tv_sec, tv_nsec, uaddr2, val3);
+}
+static void sys_enter_select(int nfds, fd_set *readfds, fd_set *writefds,
+                             fd_set *exceptfds, struct timeval *timeout)
+{
+    const struct __kernel_old_timeval *r =
+        (struct __kernel_old_timeval *)timeout;
+    long tv_sec = BPF_CORE_READ_USER(r, tv_sec);
+    long tv_usec = BPF_CORE_READ_USER(r, tv_usec);
+    bpf_printk("sys_enter_select: nfds=%d readfds=%lx writefds=%lx "
+               "exceptfds=%lx tv_sec=%lu tv_usec=%lu",
+               nfds, readfds, writefds, exceptfds, tv_sec, tv_usec);
+}
+static void sys_enter_poll(struct pollfd *fds, nfds_t nfds, int timeout)
+{
+    bpf_printk("sys_enter_poll: nfds=%lu fds=%lx timeout=%d", nfds, fds,
+               timeout);
+}
+static void sys_enter_epoll_create(int size)
+{
+    bpf_printk("sys_enter_epoll_create: size=%d", size);
+}
+static void sys_enter_epoll_create1(int flags)
+{
+    bpf_printk("sys_enter_epoll_create1: flags=%x", flags);
+}
+static void sys_enter_epoll_ctl(int epfd, int op, int fd,
+                                struct epoll_event *event)
+{
+    uint32_t events = BPF_CORE_READ_USER(event, events);
+    uint64_t data = BPF_CORE_READ_USER(event, data);
+    bpf_printk(
+        "sys_enter_epoll_ctl: epfd=%d op=%x fd=%d event=%lx events=%x data=%lx",
+        epfd, op, fd, event, events, data);
+}
+static void sys_enter_epoll_wait(int epfd, struct epoll_event *events,
+                                 int maxevents, int timeout)
+{
+    bpf_printk(
+        "sys_enter_epoll_wait: epfd=%d maxevents=%d events=%lx timeout=%d",
+        epfd, maxevents, events, timeout);
 }
 static inline void sys_enter_clock_nanosleep(clockid_t clockid, int flags,
                                              const struct timespec *request,
@@ -179,6 +222,24 @@ static inline void __syscall_enter(__u64 id, __u64 di, __u64 si, __u64 dx,
     } break;
     case __NR_futex: {
         sys_enter_futex((void *)di, si, dx, (void *)r10, (void *)r8, r9);
+    } break;
+    case __NR_select: {
+        sys_enter_select(di, (void *)si, (void *)dx, (void *)r10, (void *)r8);
+    } break;
+    case __NR_poll: {
+        sys_enter_poll((void *)di, si, dx);
+    } break;
+    case __NR_epoll_create: {
+        sys_enter_epoll_create(di);
+    } break;
+    case __NR_epoll_create1: {
+        sys_enter_epoll_create1(di);
+    } break;
+    case __NR_epoll_ctl: {
+        sys_enter_epoll_ctl(di, si, dx, (void *)r10);
+    } break;
+    case __NR_epoll_wait: {
+        sys_enter_epoll_wait(di, (void *)si, dx, r10);
     } break;
     case __NR_clock_nanosleep: {
         sys_enter_clock_nanosleep(di, si, (const struct timespec *)dx,
