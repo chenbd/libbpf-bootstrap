@@ -4,7 +4,7 @@
 #define __SYSCALLTABLE_H__
 
 #ifdef __x86_64__
-#include "x86_64/syscall_table_x86_64.h"
+#include "x86_64/syscall_table-x86_64.h"
 #endif
 
 static inline const char *syscall_name(uint32_t index)

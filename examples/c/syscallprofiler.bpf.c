@@ -5,6 +5,7 @@
 #include <bpf/bpf_tracing.h>
 #include <bpf/bpf_core_read.h>
 #include "syscallprofiler.h"
+#include "syscall_table/syscall_id.h"
 
 char LICENSE[] SEC("license") = "Dual BSD/GPL";
 
