@@ -29,7 +29,12 @@ struct {
 
 static struct hist initial_hist = {0};
 struct timespec;
+typedef __kernel_mode_t mode_t;
 
+static inline void sys_enter_read(int fd, const void *buf, size_t count)
+{
+    bpf_printk("sys_enter_read: fd=%d count=%lu buf=%lx ", fd, count, buf);
+}
 static inline void sys_enter_write(int fd, const void *buf, size_t _count)
 {
     size_t count = _count;
@@ -50,7 +55,53 @@ static inline void sys_enter_write(int fd, const void *buf, size_t _count)
     bpf_printk("sys_enter_write: fd=%d count=%lu buf=%s %s", fd, _count, tmp,
                _count != count ? "..." : "");
 }
-
+static void sys_enter_openat(int dirfd, const char *pathname, int flags,
+                             mode_t mode)
+{
+    char tmp[256] = {0};
+    bpf_core_read_user_str(tmp, sizeof(tmp), pathname);
+    bpf_printk("sys_enter_openat: dirfd=%d pathname='%s' flag=%x mode=%x",
+               dirfd, tmp, flags, mode);
+}
+static void sys_enter_open(const char *pathname, int flags, mode_t mode)
+{
+    char tmp[256] = {0};
+    bpf_core_read_user_str(tmp, sizeof(tmp), pathname);
+    bpf_printk("sys_enter_open: pathname='%s' flag=%x mode=%x", tmp, flags,
+               mode);
+}
+static void sys_enter_unlinkat(int dirfd, const char *pathname, int flags)
+{
+    char tmp[256] = {0};
+    bpf_core_read_user_str(tmp, sizeof(tmp), pathname);
+    bpf_printk("sys_enter_unlinkat: dirfd=%d pathname='%s' flag=%x", dirfd, tmp,
+               flags);
+}
+static void sys_enter_unlink(const char *pathname)
+{
+    char tmp[256] = {0};
+    bpf_core_read_user_str(tmp, sizeof(tmp), pathname);
+    bpf_printk("sys_enter_unlink: pathname='%s'", tmp);
+}
+static void sys_enter_close(int fd)
+{
+    bpf_printk("sys_enter_close: fd=%d", fd);
+}
+static void sys_enter_brk(void *addr)
+{
+    bpf_printk("sys_enter_brk: addr=%lx", addr);
+}
+static void sys_enter_mmap(void *addr, size_t length, int prot, int flags,
+                           int fd, off_t offset)
+{
+    bpf_printk(
+        "sys_enter_mmap: addr=%lx length=%lu prot=%x flags=%x fd=%d offset=%lu",
+        addr, length, prot, flags, fd, offset);
+}
+static void sys_enter_munmap(void *addr, size_t length)
+{
+    bpf_printk("sys_enter_munmap: addr=%lx length=%lu", addr, length);
+}
 static inline void sys_enter_clock_nanosleep(clockid_t clockid, int flags,
                                              const struct timespec *request,
                                              struct timespec *remain)
@@ -62,7 +113,14 @@ static inline void sys_enter_clock_nanosleep(clockid_t clockid, int flags,
         "sys_enter_clock_nanosleep: clockid=%d flag=%d tv_sec=%lu tv_nsec=%lu",
         clockid, flags, tv_sec, tv_nsec);
 }
-
+static void sys_enter_fstatat(int dirfd, const char *pathname,
+                              struct stat *statbuf, int flags)
+{
+    char tmp[256] = {0};
+    bpf_core_read_user_str(tmp, sizeof(tmp), pathname);
+    bpf_printk("sys_enter_fstatat: dirfd=%d pathname='%s' statbuf=%lx flags=%x",
+               dirfd, tmp, statbuf, flags);
+}
 static void sys_enter_bpf(int cmd, union bpf_attr *attr, unsigned int size)
 {
     bpf_printk("sys_enter_bpf: cmd=%d size=%u", cmd, size);
@@ -77,12 +135,42 @@ static inline void __syscall_enter_func(__u64 id, __u64 di, __u64 si, __u64 dx,
                                         __u64 r10, __u64 r8, __u64 r9)
 {
     switch (id) {
+    case __NR_read: {
+        sys_enter_read(di, (void *)si, dx);
+    } break;
     case __NR_write: {
         sys_enter_write(di, (void *)si, dx);
+    } break;
+    case __NR_openat: {
+        sys_enter_openat(di, (void *)si, dx, r10);
+    } break;
+    case __NR_open: {
+        sys_enter_open((void *)di, si, dx);
+    } break;
+    case __NR_unlinkat: {
+        sys_enter_unlinkat(di, (void *)si, dx);
+    } break;
+    case __NR_unlink: {
+        sys_enter_unlink((void *)di);
+    } break;
+    case __NR_close: {
+        sys_enter_close(di);
+    } break;
+    case __NR_brk: {
+        sys_enter_brk((void *)di);
+    } break;
+    case __NR_mmap: {
+        sys_enter_mmap((void *)di, si, dx, r10, r8, r9);
+    } break;
+    case __NR_munmap: {
+        sys_enter_munmap((void *)di, si);
     } break;
     case __NR_clock_nanosleep: {
         sys_enter_clock_nanosleep(di, si, (const struct timespec *)dx,
                                   (struct timespec *)r10);
+    } break;
+    case __NR_newfstatat: {
+        sys_enter_fstatat(di, (void *)si, (void *)dx, r10);
     } break;
     case __NR_bpf: {
         sys_enter_bpf(di, (union bpf_attr *)si, dx);
