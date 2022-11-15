@@ -34,6 +34,7 @@ typedef __kernel_mode_t mode_t;
 typedef __kernel_fd_set fd_set;
 typedef unsigned long int nfds_t;
 typedef uint32_t socklen_t; /* LP64 sitll has a 32-bit socklen_t. */
+typedef uint32_t id_t;      /* LP64 sitll has a 32-bit socklen_t. */
 
 static inline void sys_enter_read(int fd, const void *buf, size_t count)
 {
@@ -472,12 +473,170 @@ static void sys_enter_symlinkat(const char *target, int newdirfd,
     bpf_core_read_user_str(tmp, sizeof(tmp), linkpath);
     bpf_printk("sys_enter_symlink: newdirfd=%d linkpath='%s'", newdirfd, tmp);
 }
+static void sys_enter_chown(const char *pathname, uid_t owner, gid_t group)
+{
+    char tmp[256] = {0};
+    bpf_core_read_user_str(tmp, sizeof(tmp), pathname);
+    bpf_printk("sys_enter_chown: pathname='%s' owner=%d group=%d", tmp, owner,
+               group);
+}
+static void sys_enter_fchown(int fd, uid_t owner, gid_t group)
+{
+    bpf_printk("sys_enter_fchown: fd=%d owner=%d group=%d", fd, owner, group);
+}
+static void sys_enter_lchown(const char *pathname, uid_t owner, gid_t group)
+{
+    char tmp[256] = {0};
+    bpf_core_read_user_str(tmp, sizeof(tmp), pathname);
+    bpf_printk("sys_enter_lchown: pathname='%s' owner=%d group=%d", tmp, owner,
+               group);
+}
+static void sys_enter_umask(mode_t mask)
+{
+    bpf_printk("sys_enter_umask: mask=%d", mask);
+}
+static void sys_enter_gettimeofday(struct timeval *tv, struct timezone *tz)
+{
+    bpf_printk("sys_enter_gettimeofday: tv=%lx tz=%lx", tv, tz);
+}
+static void sys_enter_settimeofday(const struct timeval *tv,
+                                   const struct timezone *tz)
+{
+    bpf_printk("sys_enter_settimeofday: tv=%lx tz=%lx", tv, tz);
+}
+static void sys_enter_utime(const char *filename, const struct utimbuf *times)
+{
+    char tmp[256] = {0};
+    bpf_core_read_user_str(tmp, sizeof(tmp), filename);
+    bpf_printk("sys_enter_utime: filename='%s' times=%lx", tmp, times);
+}
+static void sys_enter_utimes(const char *filename,
+                             const struct timeval *times /* [2] */)
+{
+    char tmp[256] = {0};
+    bpf_core_read_user_str(tmp, sizeof(tmp), filename);
+    bpf_printk("sys_enter_utimes: filename='%s' times=%lx", tmp, times);
+}
+static void sys_enter_ustat(dev_t dev, struct ustat *ubuf)
+{
+    bpf_printk("sys_enter_ustat: dev=%u ubuf=%lx", dev, ubuf);
+}
+static void sys_enter_statfs(const char *path, struct statfs *buf)
+{
+    char tmp[256] = {0};
+    bpf_core_read_user_str(tmp, sizeof(tmp), path);
+    bpf_printk("sys_enter_statfs: path='%s' buf=%lx", tmp, buf);
+}
+static void sys_enter_fstatfs(int fd, struct statfs *buf)
+{
+    bpf_printk("sys_enter_fstatfs: fd=%d buf=%lx", fd, buf);
+}
+static void sys_enter_getpriority(int which, id_t who)
+{
+    bpf_printk("sys_enter_getpriority: which=%d who=%d", which, who);
+}
+static void sys_enter_setpriority(int which, id_t who, int prio)
+{
+    bpf_printk("sys_enter_setpriority: which=%d who=%d prio=%d", which, who,
+               prio);
+}
+static void sys_enter_sched_setparam(pid_t pid, const struct sched_param *param)
+{
+    bpf_printk("sys_enter_sched_setparamm: pid=%d param=%lx", pid, param);
+}
+static void sys_enter_sched_getparam(pid_t pid, struct sched_param *param)
+{
+    bpf_printk("sys_enter_sched_getparamm: pid=%d param=%lx", pid, param);
+}
+static void sys_enter_sched_setscheduler(pid_t pid, int policy,
+                                         const struct sched_param *param)
+{
+    bpf_printk("sys_enter_sched_setscheduler: pid=%d policy=%d param=%lx", pid,
+               policy, param);
+}
+static void sys_enter_sched_getscheduler(pid_t pid)
+{
+    bpf_printk("sys_enter_sched_getscheduler: pid=%d ", pid);
+}
+static void sys_enter_mlock(const void *addr, size_t len)
+{
+    bpf_printk("sys_enter_mlock: addr=%lx len=%lu", addr, len);
+}
+static void sys_enter_mlock2(const void *addr, size_t len, int flags)
+{
+    bpf_printk("sys_enter_mlock2: addr=%lx len=%lu flags=%x", addr, len, flags);
+}
+static void sys_enter_munlock(const void *addr, size_t len)
+{
+    bpf_printk("sys_enter_munlock: addr=%lx len=%lu", addr, len);
+}
+static void sys_enter_mlockall(int flags)
+{
+    bpf_printk("sys_enter_mlockall: flags=%x", flags);
+}
+static void sys_enter_munlockall(void) { bpf_printk("sys_enter_munlockall: "); }
+static void sys_enter_prctl(int option, unsigned long arg2, unsigned long arg3,
+                            unsigned long arg4, unsigned long arg5)
+{
+    bpf_printk("sys_enter_prctl: option=%d arg2=%lx arg3=%lx arg4=%lx arg5=%lx",
+               option, arg2, arg3, arg4, arg5);
+}
+static void sys_enter_getrlimit(int resource, struct rlimit *rlim)
+{
+    bpf_printk("sys_enter_getrlimit: resource=%d rlim=%lx", resource, rlim);
+}
+static void sys_enter_setrlimit(int resource, const struct rlimit *rlim)
+{
+    bpf_printk("sys_enter_setrlimit: resource=%d rlim=%lx", resource, rlim);
+}
+static void sys_enter_inotify_init(void)
+{
+    bpf_printk("sys_enter_inotify_init:");
+}
+static void sys_enter_inotify_init1(int flags)
+{
+    bpf_printk("sys_enter_inotify_init1: flags=%x", flags);
+}
+static void sys_enter_inotify_add_watch(int fd, const char *pathname,
+                                        uint32_t mask)
+{
+    char tmp[256] = {0};
+    bpf_core_read_user_str(tmp, sizeof(tmp), pathname);
+    bpf_printk("sys_enter_add_watch: fd=%d pathname='%s' mask=%lx", fd, tmp,
+               mask);
+}
+static void sys_enter_inotify_rm_watch(int fd, int wd)
+{
+    bpf_printk("sys_enter_add_watch: fd=%d wd=%d", fd, wd);
+}
+static void sys_enter_fallocate(int fd, int mode, off_t offset, off_t len)
+{
+    bpf_printk("sys_enter_fallocate: fd=%d mode=%d offset=%lu len=%lu", fd,
+               mode, offset, len);
+}
+static void sys_enter_copy_file_range(int fd_in, loff_t *off_in, int fd_out,
+                                      loff_t *off_out, size_t len,
+                                      unsigned int flags)
+{
+    bpf_printk("sys_enter_copy_file_range: fd_in=%d off_in=%lx fd_out=%d "
+               "off_out=%lx len=%lu flags=%x",
+               fd_in, off_in, fd_out, off_out, len, flags);
+}
 static void sys_enter_readlink(const char *pathname, char *buf, size_t bufsiz)
 {
     char tmp[256] = {0};
     bpf_core_read_user_str(tmp, sizeof(tmp), pathname);
     bpf_printk("sys_enter_readlink: pathname='%s' buf=%lx bufsiz=%lu", tmp, buf,
                bufsiz);
+}
+static void sys_enter_readlinkat(int dirfd, const char *pathname, char *buf,
+                                 size_t bufsiz)
+{
+    char tmp[256] = {0};
+    bpf_core_read_user_str(tmp, sizeof(tmp), pathname);
+    bpf_printk(
+        "sys_enter_readlinkat: dirfd=%d pathname='%s' buf=%lx bufsiz=%lu",
+        dirfd, tmp, buf, bufsiz);
 }
 static void sys_enter_chmod(const char *pathname, mode_t mode)
 {
@@ -812,6 +971,9 @@ static inline void __syscall_enter(__u64 id, __u64 di, __u64 si, __u64 dx,
     case __NR_readlink: {
         sys_enter_readlink((void *)di, (void *)si, dx);
     } break;
+    case __NR_readlinkat: {
+        sys_enter_readlinkat(di, (void *)si, (void *)dx, r10);
+    } break;
     case __NR_chmod: {
         sys_enter_chmod((void *)di, si);
     } break;
@@ -823,6 +985,99 @@ static inline void __syscall_enter(__u64 id, __u64 di, __u64 si, __u64 dx,
     } break;
     case __NR_symlinkat: {
         sys_enter_symlinkat((void *)di, si, (void *)dx);
+    } break;
+    case __NR_chown: {
+        sys_enter_chown((void *)di, si, dx);
+    } break;
+    case __NR_fchown: {
+        sys_enter_fchown(di, si, dx);
+    } break;
+    case __NR_lchown: {
+        sys_enter_lchown((void *)di, si, dx);
+    } break;
+    case __NR_umask: {
+        sys_enter_umask(di);
+    } break;
+    case __NR_gettimeofday: {
+        sys_enter_gettimeofday((void *)di, (void *)si);
+    } break;
+    case __NR_settimeofday: {
+        sys_enter_settimeofday((void *)di, (void *)si);
+    } break;
+    case __NR_utime: {
+        sys_enter_utime((void *)di, (void *)si);
+    } break;
+    case __NR_utimes: {
+        sys_enter_utimes((void *)di, (void *)si);
+    } break;
+    case __NR_ustat: {
+        sys_enter_ustat(di, (void *)si);
+    } break;
+    case __NR_statfs: {
+        sys_enter_statfs((void *)di, (void *)si);
+    } break;
+    case __NR_fstatfs: {
+        sys_enter_fstatfs(di, (void *)si);
+    } break;
+    case __NR_getpriority: {
+        sys_enter_getpriority(di, si);
+    } break;
+    case __NR_setpriority: {
+        sys_enter_setpriority(di, si, dx);
+    } break;
+    case __NR_sched_getparam: {
+        sys_enter_sched_getparam(di, (void *)si);
+    } break;
+    case __NR_sched_setparam: {
+        sys_enter_sched_setparam(di, (void *)si);
+    } break;
+    case __NR_sched_getscheduler: {
+        sys_enter_sched_getscheduler(di);
+    } break;
+    case __NR_sched_setscheduler: {
+        sys_enter_sched_setscheduler(di, si, (void *)dx);
+    } break;
+    case __NR_mlock: {
+        sys_enter_mlock((void *)di, si);
+    } break;
+    case __NR_mlock2: {
+        sys_enter_mlock2((void *)di, si, dx);
+    } break;
+    case __NR_munlock: {
+        sys_enter_munlock((void *)di, si);
+    } break;
+    case __NR_mlockall: {
+        sys_enter_mlockall(di);
+    } break;
+    case __NR_munlockall: {
+        sys_enter_munlockall();
+    } break;
+    case __NR_setrlimit: {
+        sys_enter_setrlimit(di, (void *)si);
+    } break;
+    case __NR_getrlimit: {
+        sys_enter_getrlimit(di, (void *)si);
+    } break;
+    case __NR_prctl: {
+        sys_enter_prctl(di, si, dx, r10, r8);
+    } break;
+    case __NR_inotify_init: {
+        sys_enter_inotify_init();
+    } break;
+    case __NR_inotify_init1: {
+        sys_enter_inotify_init1(di);
+    } break;
+    case __NR_inotify_add_watch: {
+        sys_enter_inotify_add_watch(di, (void *)si, dx);
+    } break;
+    case __NR_inotify_rm_watch: {
+        sys_enter_inotify_rm_watch(di, si);
+    } break;
+    case __NR_fallocate: {
+        sys_enter_fallocate(di, si, dx, r10);
+    } break;
+    case __NR_copy_file_range: {
+        sys_enter_copy_file_range(di, (void *)si, dx, (void *)r10, r8, r9);
     } break;
     case __NR_nanosleep: {
         sys_enter_nanosleep((void *)di, (void *)si);
