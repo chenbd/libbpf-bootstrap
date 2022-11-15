@@ -74,20 +74,12 @@ static void sys_enter_open(const char *pathname, int flags, mode_t mode)
     bpf_printk("sys_enter_open: pathname='%s' flag=%x mode=%x", tmp, flags,
                mode);
 }
-static void sys_enter_unlinkat(int dirfd, const char *pathname, int flags)
-{
-    char tmp[256] = {0};
-    bpf_core_read_user_str(tmp, sizeof(tmp), pathname);
-    bpf_printk("sys_enter_unlinkat: dirfd=%d pathname='%s' flag=%x", dirfd, tmp,
-               flags);
-}
 static void sys_enter_stat(const char *pathname, struct stat *statbuf)
 {
     char tmp[256] = {0};
     bpf_core_read_user_str(tmp, sizeof(tmp), pathname);
     bpf_printk("sys_enter_stat: pathname='%s' statbuf=%x", tmp, statbuf);
 }
-
 static void sys_enter_fstat(int fd, struct stat *statbuf)
 {
     bpf_printk("sys_enter_fstat: fd=%d statbuf=%x", fd, statbuf);
@@ -128,7 +120,23 @@ static void sys_enter_access(const char *pathname, int mode)
 {
     char tmp[256] = {0};
     bpf_core_read_user_str(tmp, sizeof(tmp), pathname);
-    bpf_printk("sys_enter_access: pathname='%s' mode=%lx", tmp, mode);
+    bpf_printk("sys_enter_access: pathname='%s' mode=%d", tmp, mode);
+}
+static void sys_enter_faccessat(int dirfd, const char *pathname, int mode,
+                                int flags)
+{
+    char tmp[256] = {0};
+    bpf_core_read_user_str(tmp, sizeof(tmp), pathname);
+    bpf_printk("sys_enter_faccessat: dirfd=%d pathname='%s' mode=%d flags=%x",
+               dirfd, tmp, mode, flags);
+}
+static void sys_enter_faccessat2(int dirfd, const char *pathname, int mode,
+                                 int flags)
+{
+    char tmp[256] = {0};
+    bpf_core_read_user_str(tmp, sizeof(tmp), pathname);
+    bpf_printk("sys_enter_faccessat2: dirfd=%d pathname='%s' mode=%d flags=%x",
+               dirfd, tmp, mode, flags);
 }
 static void sys_enter_pipe(int pipefd[2])
 {
@@ -144,6 +152,13 @@ static void sys_enter_unlink(const char *pathname)
     char tmp[256] = {0};
     bpf_core_read_user_str(tmp, sizeof(tmp), pathname);
     bpf_printk("sys_enter_unlink: pathname='%s'", tmp);
+}
+static void sys_enter_unlinkat(int dirfd, const char *pathname, int flags)
+{
+    char tmp[256] = {0};
+    bpf_core_read_user_str(tmp, sizeof(tmp), pathname);
+    bpf_printk("sys_enter_unlinkat: dirfd=%d pathname='%s' flag=%x", dirfd, tmp,
+               flags);
 }
 static void sys_enter_close(int fd)
 {
@@ -382,6 +397,106 @@ static void sys_enter_ftruncate(int fd, off_t length)
 {
     bpf_printk("sys_enter_ftruncate: fd=%d length=%lu", fd, length);
 }
+static void sys_enter_getcwd(char *buf, size_t size)
+{
+    bpf_printk("sys_enter_getcwd: buf=%lx size=%lu", buf, size);
+}
+static void sys_enter_chdir(const char *path)
+{
+    char tmp[256] = {0};
+    bpf_core_read_user_str(tmp, sizeof(tmp), path);
+    bpf_printk("sys_enter_chdir: path='%s'", tmp);
+}
+static void sys_enter_fchdir(int fd)
+{
+    bpf_printk("sys_enter_fchdir: fd=%d", fd);
+}
+static void sys_enter_rename(const char *oldpath, const char *newpath)
+{
+    char tmp[256] = {0};
+    bpf_core_read_user_str(tmp, sizeof(tmp), oldpath);
+    bpf_printk("sys_enter_rename: oldpath='%s'", tmp);
+    bpf_core_read_user_str(tmp, sizeof(tmp), newpath);
+    bpf_printk("sys_enter_rename: newpath='%s'", tmp);
+}
+static void sys_enter_mkdir(const char *pathname, mode_t mode)
+{
+    char tmp[256] = {0};
+    bpf_core_read_user_str(tmp, sizeof(tmp), pathname);
+    bpf_printk("sys_enter_mkdir: pathname='%s' mode=%d", tmp, mode);
+}
+static void sys_enter_rmdir(const char *pathname)
+{
+    char tmp[256] = {0};
+    bpf_core_read_user_str(tmp, sizeof(tmp), pathname);
+    bpf_printk("sys_enter_rmdir: pathname='%s'", tmp);
+}
+static void sys_enter_creat(const char *pathname, mode_t mode)
+{
+    char tmp[256] = {0};
+    bpf_core_read_user_str(tmp, sizeof(tmp), pathname);
+    bpf_printk("sys_enter_creat: pathname='%s' mode=%d", tmp, mode);
+}
+static void sys_enter_link(const char *oldpath, const char *newpath)
+{
+    char tmp[256] = {0};
+    bpf_core_read_user_str(tmp, sizeof(tmp), oldpath);
+    bpf_printk("sys_enter_link: oldpath='%s'", tmp);
+    bpf_core_read_user_str(tmp, sizeof(tmp), newpath);
+    bpf_printk("sys_enter_link: newpath='%s'", tmp);
+}
+static void sys_enter_linkat(int olddirfd, const char *oldpath, int newdirfd,
+                             const char *newpath, int flags)
+{
+    char tmp[256] = {0};
+    bpf_core_read_user_str(tmp, sizeof(tmp), oldpath);
+    bpf_printk("sys_enter_linkat: olddirfd=%d oldpath='%s'", olddirfd, tmp);
+    bpf_core_read_user_str(tmp, sizeof(tmp), newpath);
+    bpf_printk("sys_enter_linkat: newdirfd=%d newpath='%s' flags=%x", newdirfd,
+               tmp, flags);
+}
+static void sys_enter_symlink(const char *target, const char *linkpath)
+{
+    char tmp[256] = {0};
+    bpf_core_read_user_str(tmp, sizeof(tmp), target);
+    bpf_printk("sys_enter_symlink: target='%s'", tmp);
+    bpf_core_read_user_str(tmp, sizeof(tmp), linkpath);
+    bpf_printk("sys_enter_symlink: linkpath='%s'", tmp);
+}
+static void sys_enter_symlinkat(const char *target, int newdirfd,
+                                const char *linkpath)
+{
+    char tmp[256] = {0};
+    bpf_core_read_user_str(tmp, sizeof(tmp), target);
+    bpf_printk("sys_enter_symlink: target='%s'", tmp);
+    bpf_core_read_user_str(tmp, sizeof(tmp), linkpath);
+    bpf_printk("sys_enter_symlink: newdirfd=%d linkpath='%s'", newdirfd, tmp);
+}
+static void sys_enter_readlink(const char *pathname, char *buf, size_t bufsiz)
+{
+    char tmp[256] = {0};
+    bpf_core_read_user_str(tmp, sizeof(tmp), pathname);
+    bpf_printk("sys_enter_readlink: pathname='%s' buf=%lx bufsiz=%lu", tmp, buf,
+               bufsiz);
+}
+static void sys_enter_chmod(const char *pathname, mode_t mode)
+{
+    char tmp[256] = {0};
+    bpf_core_read_user_str(tmp, sizeof(tmp), pathname);
+    bpf_printk("sys_enter_chmod: pathname='%s' mode=%d", tmp, mode);
+}
+static void sys_enter_fchmod(int fd, mode_t mode)
+{
+    bpf_printk("sys_enter_fchmod: fd=%d mode=%d", fd, mode);
+}
+static void sys_enter_fchmodat(int dirfd, const char *pathname, mode_t mode,
+                               int flags)
+{
+    char tmp[256] = {0};
+    bpf_core_read_user_str(tmp, sizeof(tmp), pathname);
+    bpf_printk("sys_enter_fchmodat: dirfd=%d pathname='%s' mode=%d flags=%x",
+               dirfd, tmp, mode, flags);
+}
 static void sys_enter_nanosleep(const struct timespec *req,
                                 struct timespec *rem)
 {
@@ -481,9 +596,6 @@ static inline void __syscall_enter(__u64 id, __u64 di, __u64 si, __u64 dx,
     case __NR_open: {
         sys_enter_open((void *)di, si, dx);
     } break;
-    case __NR_unlinkat: {
-        sys_enter_unlinkat(di, (void *)si, dx);
-    } break;
     case __NR_stat: {
         sys_enter_stat((void *)di, (void *)si);
     } break;
@@ -511,6 +623,12 @@ static inline void __syscall_enter(__u64 id, __u64 di, __u64 si, __u64 dx,
     case __NR_access: {
         sys_enter_access((void *)di, si);
     } break;
+    case __NR_faccessat: {
+        sys_enter_faccessat(di, (void *)si, dx, r10);
+    } break;
+    case __NR_faccessat2: {
+        sys_enter_faccessat2(di, (void *)si, dx, r10);
+    } break;
     case __NR_pipe: {
         sys_enter_pipe((void *)di);
     } break;
@@ -522,6 +640,9 @@ static inline void __syscall_enter(__u64 id, __u64 di, __u64 si, __u64 dx,
     } break;
     case __NR_unlink: {
         sys_enter_unlink((void *)di);
+    } break;
+    case __NR_unlinkat: {
+        sys_enter_unlinkat(di, (void *)si, dx);
     } break;
     case __NR_close: {
         sys_enter_close(di);
@@ -657,6 +778,51 @@ static inline void __syscall_enter(__u64 id, __u64 di, __u64 si, __u64 dx,
     } break;
     case __NR_ftruncate: {
         sys_enter_ftruncate(di, si);
+    } break;
+    case __NR_getcwd: {
+        sys_enter_getcwd((void *)di, si);
+    } break;
+    case __NR_chdir: {
+        sys_enter_chdir((void *)di);
+    } break;
+    case __NR_fchdir: {
+        sys_enter_fchdir(di);
+    } break;
+    case __NR_rename: {
+        sys_enter_rename((void *)di, (void *)si);
+    } break;
+    case __NR_mkdir: {
+        sys_enter_mkdir((void *)di, si);
+    } break;
+    case __NR_rmdir: {
+        sys_enter_rmdir((void *)di);
+    } break;
+    case __NR_creat: {
+        sys_enter_creat((void *)di, si);
+    } break;
+    case __NR_link: {
+        sys_enter_link((void *)di, (void *)si);
+    } break;
+    case __NR_linkat: {
+        sys_enter_linkat(di, (void *)si, dx, (void *)r10, r8);
+    } break;
+    case __NR_symlink: {
+        sys_enter_symlink((void *)di, (void *)si);
+    } break;
+    case __NR_readlink: {
+        sys_enter_readlink((void *)di, (void *)si, dx);
+    } break;
+    case __NR_chmod: {
+        sys_enter_chmod((void *)di, si);
+    } break;
+    case __NR_fchmod: {
+        sys_enter_fchmod(di, si);
+    } break;
+    case __NR_fchmodat: {
+        sys_enter_fchmodat(di, (void *)si, dx, r10);
+    } break;
+    case __NR_symlinkat: {
+        sys_enter_symlinkat((void *)di, si, (void *)dx);
     } break;
     case __NR_nanosleep: {
         sys_enter_nanosleep((void *)di, (void *)si);
