@@ -5,6 +5,8 @@
 #include <sys/resource.h>
 #include <sys/syscall.h>
 #include <unistd.h>
+#include <fcntl.h>
+#include <sys/stat.h>
 
 #include "syscallprofiler.skel.h"
 #include "syscallprofiler.h"
@@ -22,6 +24,38 @@ static void show_help(const char *progname)
 {
     printf("Usage: %s [-p <pid> -c <syscall no> -n <syscall name>] [-v] [-h]\n",
            progname);
+}
+
+struct syscall_info_t {
+    uint32_t syscall;
+    uint64_t count;
+};
+
+static int __compare_syscall_info(const void *p1, const void *p2)
+{
+    const struct syscall_info_t *i1 = p1;
+    const struct syscall_info_t *i2 = p2;
+    if (i1->count > i2->count) return -1;
+    if (i1->count < i2->count) return 1;
+    return 0;
+}
+
+static size_t __collect_syscall_infos(const struct hist *hists,
+                                      struct syscall_info_t *infos)
+{
+    size_t num = 0;
+    for (uint32_t syscall = 0; syscall < MAX_SYSCALLS; ++syscall) {
+        __u64 total = 0;
+        for (int i = 0; i < MAX_SLOTS; ++i) {
+            total += hists->slots[syscall][i];
+        }
+        if (total == 0) continue;
+        infos[num].syscall = syscall;
+        infos[num].count = total;
+        num++;
+    }
+    qsort(infos, num, sizeof(struct syscall_info_t), __compare_syscall_info);
+    return num;
 }
 
 static void __show_hist(const struct hist *hists, uint32_t syscall,
@@ -130,7 +164,10 @@ int main(int argc, char **argv)
             if (filter_syscall != UINT32_MAX) {
                 __show_hist(&hists, filter_syscall, filter_pid);
             } else {
-                for (uint32_t syscall = 0; syscall < MAX_SYSCALLS; ++syscall) {
+                struct syscall_info_t infos[MAX_SYSCALLS];
+                size_t num = __collect_syscall_infos(&hists, infos);
+                for (size_t i = 0; i < num; ++i) {
+                    uint32_t syscall = infos[i].syscall;
                     __show_hist(&hists, syscall, filter_pid);
                 }
             }

@@ -104,6 +104,10 @@ static void sys_enter_lseek(int fd, off_t offset, int whence)
     bpf_printk("sys_enter_lseek: fd=%d offset=%lx whence=%d", fd, offset,
                whence);
 }
+static void sys_enter_ioctl(int fd, unsigned long request)
+{
+    bpf_printk("sys_enter_ioctl: fd=%d request=%lx", fd, request);
+}
 static void sys_enter_mprotect(void *addr, size_t len, int prot)
 {
     bpf_printk("sys_enter_mprotect: addr=%lx size=%lx prot=%d", addr, len,
@@ -219,7 +223,7 @@ static void sys_enter_sendfile(int out_fd, int in_fd, off_t *offset,
 }
 static void sys_enter_socket(int domain, int type, int protocol)
 {
-    bpf_printk("sys_enter_socket: domain=%d type=%d protocol=%d", domain, type,
+    bpf_printk("sys_enter_socket: domain=%d type=%x protocol=%d", domain, type,
                protocol);
 }
 static void sys_enter_connect(int sockfd, const struct sockaddr *addr,
@@ -308,7 +312,7 @@ static void sys_enter_getpeername(int sockfd, struct sockaddr *addr,
 }
 static void sys_enter_socketpair(int domain, int type, int protocol, int sv[2])
 {
-    bpf_printk("sys_enter_socketpair: domain=%d type=%d protocol=%d sv=%lx",
+    bpf_printk("sys_enter_socketpair: domain=%d type=%x protocol=%d sv=%lx",
                domain, type, protocol, sv);
 }
 static void sys_enter_getsockopt(int sockfd, int level, int optname,
@@ -622,6 +626,8 @@ static void sys_enter_copy_file_range(int fd_in, loff_t *off_in, int fd_out,
                "off_out=%lx len=%lu flags=%x",
                fd_in, off_in, fd_out, off_out, len, flags);
 }
+static void sys_enter_getpid() { bpf_printk("sys_enter_getpid:"); }
+static void sys_enter_gettid() { bpf_printk("sys_enter_gettid:"); }
 static void sys_enter_readlink(const char *pathname, char *buf, size_t bufsiz)
 {
     char tmp[256] = {0};
@@ -749,11 +755,14 @@ static inline void __syscall_enter(__u64 id, __u64 di, __u64 si, __u64 dx,
     case __NR_write: {
         sys_enter_write(di, (void *)si, dx);
     } break;
+    case __NR_open: {
+        sys_enter_open((void *)di, si, dx);
+    } break;
     case __NR_openat: {
         sys_enter_openat(di, (void *)si, dx, r10);
     } break;
-    case __NR_open: {
-        sys_enter_open((void *)di, si, dx);
+    case __NR_close: {
+        sys_enter_close(di);
     } break;
     case __NR_stat: {
         sys_enter_stat((void *)di, (void *)si);
@@ -767,11 +776,32 @@ static inline void __syscall_enter(__u64 id, __u64 di, __u64 si, __u64 dx,
     case __NR_newfstatat: {
         sys_enter_fstatat(di, (void *)si, (void *)dx, r10);
     } break;
+    case __NR_poll: {
+        sys_enter_poll((void *)di, si, dx);
+    } break;
     case __NR_lseek: {
         sys_enter_lseek(di, si, dx);
     } break;
+    case __NR_mmap: {
+        sys_enter_mmap((void *)di, si, dx, r10, r8, r9);
+    } break;
     case __NR_mprotect: {
         sys_enter_mprotect((void *)di, si, dx);
+    } break;
+    case __NR_munmap: {
+        sys_enter_munmap((void *)di, si);
+    } break;
+    case __NR_brk: {
+        sys_enter_brk((void *)di);
+    } break;
+    case __NR_rt_sigaction:
+    case __NR_rt_sigprocmask:
+    case __NR_rt_sigreturn:
+    case __NR_pread64:
+    case __NR_pwrite64:
+        break;
+    case __NR_ioctl: {
+        sys_enter_ioctl(di, si);
     } break;
     case __NR_readv: {
         sys_enter_readv(di, (void *)si, dx);
@@ -794,23 +824,11 @@ static inline void __syscall_enter(__u64 id, __u64 di, __u64 si, __u64 dx,
     case __NR_pipe2: {
         sys_enter_pipe2((void *)di, si);
     } break;
+    case __NR_select: {
+        sys_enter_select(di, (void *)si, (void *)dx, (void *)r10, (void *)r8);
+    } break;
     case __NR_sched_yield: {
         sys_enter_sched_yield();
-    } break;
-    case __NR_unlink: {
-        sys_enter_unlink((void *)di);
-    } break;
-    case __NR_unlinkat: {
-        sys_enter_unlinkat(di, (void *)si, dx);
-    } break;
-    case __NR_close: {
-        sys_enter_close(di);
-    } break;
-    case __NR_brk: {
-        sys_enter_brk((void *)di);
-    } break;
-    case __NR_mmap: {
-        sys_enter_mmap((void *)di, si, dx, r10, r8, r9);
     } break;
     case __NR_mremap: {
         sys_enter_mremap((void *)di, si, dx, r10);
@@ -818,11 +836,16 @@ static inline void __syscall_enter(__u64 id, __u64 di, __u64 si, __u64 dx,
     case __NR_msync: {
         sys_enter_msync((void *)di, si, dx);
     } break;
+    case __NR_mincore:
+    case __NR_shmget:
+    case __NR_shmat:
+    case __NR_shmctl:
+    case __NR_getitimer:
+    case __NR_alarm:
+    case __NR_setitimer:
+        break;
     case __NR_madvise: {
         sys_enter_madvise((void *)di, si, dx);
-    } break;
-    case __NR_munmap: {
-        sys_enter_munmap((void *)di, si);
     } break;
     case __NR_dup: {
         sys_enter_dup(di);
@@ -835,6 +858,12 @@ static inline void __syscall_enter(__u64 id, __u64 di, __u64 si, __u64 dx,
     } break;
     case __NR_pause: {
         sys_enter_pause();
+    } break;
+    case __NR_nanosleep: {
+        sys_enter_nanosleep((void *)di, (void *)si);
+    } break;
+    case __NR_getpid: {
+        sys_enter_getpid();
     } break;
     case __NR_sendfile: {
         sys_enter_sendfile(di, si, (void *)dx, r10);
@@ -920,6 +949,17 @@ static inline void __syscall_enter(__u64 id, __u64 di, __u64 si, __u64 dx,
     case __NR_kill: {
         sys_enter_kill(di, si);
     } break;
+    case __NR_uname:
+    case __NR_semget:
+    case __NR_semop:
+    case __NR_semctl:
+    case __NR_shmdt:
+    case __NR_msgget:
+    case __NR_msgsnd:
+    case __NR_msgrcv:
+    case __NR_msgctl:
+    case __NR_getdents:
+        break;
     case __NR_fcntl: {
         sys_enter_fcntl(di, si);
     } break;
@@ -965,8 +1005,17 @@ static inline void __syscall_enter(__u64 id, __u64 di, __u64 si, __u64 dx,
     case __NR_linkat: {
         sys_enter_linkat(di, (void *)si, dx, (void *)r10, r8);
     } break;
+    case __NR_unlink: {
+        sys_enter_unlink((void *)di);
+    } break;
+    case __NR_unlinkat: {
+        sys_enter_unlinkat(di, (void *)si, dx);
+    } break;
     case __NR_symlink: {
         sys_enter_symlink((void *)di, (void *)si);
+    } break;
+    case __NR_symlinkat: {
+        sys_enter_symlinkat((void *)di, si, (void *)dx);
     } break;
     case __NR_readlink: {
         sys_enter_readlink((void *)di, (void *)si, dx);
@@ -982,9 +1031,6 @@ static inline void __syscall_enter(__u64 id, __u64 di, __u64 si, __u64 dx,
     } break;
     case __NR_fchmodat: {
         sys_enter_fchmodat(di, (void *)si, dx, r10);
-    } break;
-    case __NR_symlinkat: {
-        sys_enter_symlinkat((void *)di, si, (void *)dx);
     } break;
     case __NR_chown: {
         sys_enter_chown((void *)di, si, dx);
@@ -1004,6 +1050,51 @@ static inline void __syscall_enter(__u64 id, __u64 di, __u64 si, __u64 dx,
     case __NR_settimeofday: {
         sys_enter_settimeofday((void *)di, (void *)si);
     } break;
+    case __NR_setrlimit: {
+        sys_enter_setrlimit(di, (void *)si);
+    } break;
+    case __NR_getrlimit: {
+        sys_enter_getrlimit(di, (void *)si);
+    } break;
+    case __NR_getrusage:
+    case __NR_sysinfo:
+    case __NR_times:
+    case __NR_ptrace:
+    case __NR_getuid:
+    case __NR_syslog:
+    case __NR_getgid:
+    case __NR_setuid:
+    case __NR_setgid:
+    case __NR_geteuid:
+    case __NR_getegid:
+    case __NR_setpgid:
+    case __NR_getppid:
+    case __NR_getpgrp:
+    case __NR_setsid:
+    case __NR_setreuid:
+    case __NR_setregid:
+    case __NR_getgroups:
+    case __NR_setgroups:
+    case __NR_setresuid:
+    case __NR_getresuid:
+    case __NR_setresgid:
+    case __NR_getresgid:
+    case __NR_getpgid:
+    case __NR_setfsuid:
+    case __NR_setfsgid:
+    case __NR_getsid:
+    case __NR_capget:
+    case __NR_capset:
+    case __NR_rt_sigpending:
+    case __NR_rt_sigtimedwait:
+    case __NR_rt_sigqueueinfo:
+    case __NR_rt_sigsuspend:
+    case __NR_sigaltstack:
+    case __NR_mknod:
+    case __NR_uselib:
+    case __NR_personality:
+    case __NR_sysfs:
+        break;
     case __NR_utime: {
         sys_enter_utime((void *)di, (void *)si);
     } break;
@@ -1037,6 +1128,40 @@ static inline void __syscall_enter(__u64 id, __u64 di, __u64 si, __u64 dx,
     case __NR_sched_setscheduler: {
         sys_enter_sched_setscheduler(di, si, (void *)dx);
     } break;
+    case __NR_sched_get_priority_max:
+    case __NR_sched_get_priority_min:
+    case __NR_sched_rr_get_interval:
+    case __NR_vhangup:
+    case __NR_modify_ldt:
+    case __NR_pivot_root:
+    case __NR__sysctl:
+    case __NR_arch_prctl:
+    case __NR_adjtimex:
+    case __NR_chroot:
+    case __NR_sync:
+    case __NR_acct:
+    case __NR_mount:
+    case __NR_umount2:
+    case __NR_swapon:
+    case __NR_swapoff:
+    case __NR_reboot:
+    case __NR_sethostname:
+    case __NR_setdomainname:
+    case __NR_iopl:
+    case __NR_ioperm:
+    case __NR_create_module:
+    case __NR_init_module:
+    case __NR_delete_module:
+    case __NR_get_kernel_syms:
+    case __NR_query_module:
+    case __NR_quotactl:
+    case __NR_nfsservctl:
+    case __NR_getpmsg:
+    case __NR_putpmsg:
+    case __NR_afs_syscall:
+    case __NR_tuxcall:
+    case __NR_security:
+        break;
     case __NR_mlock: {
         sys_enter_mlock((void *)di, si);
     } break;
@@ -1052,45 +1177,42 @@ static inline void __syscall_enter(__u64 id, __u64 di, __u64 si, __u64 dx,
     case __NR_munlockall: {
         sys_enter_munlockall();
     } break;
-    case __NR_setrlimit: {
-        sys_enter_setrlimit(di, (void *)si);
-    } break;
-    case __NR_getrlimit: {
-        sys_enter_getrlimit(di, (void *)si);
-    } break;
     case __NR_prctl: {
         sys_enter_prctl(di, si, dx, r10, r8);
     } break;
-    case __NR_inotify_init: {
-        sys_enter_inotify_init();
+    case __NR_gettid: {
+        sys_enter_gettid();
     } break;
-    case __NR_inotify_init1: {
-        sys_enter_inotify_init1(di);
-    } break;
-    case __NR_inotify_add_watch: {
-        sys_enter_inotify_add_watch(di, (void *)si, dx);
-    } break;
-    case __NR_inotify_rm_watch: {
-        sys_enter_inotify_rm_watch(di, si);
-    } break;
-    case __NR_fallocate: {
-        sys_enter_fallocate(di, si, dx, r10);
-    } break;
-    case __NR_copy_file_range: {
-        sys_enter_copy_file_range(di, (void *)si, dx, (void *)r10, r8, r9);
-    } break;
-    case __NR_nanosleep: {
-        sys_enter_nanosleep((void *)di, (void *)si);
-    } break;
+    case __NR_readahead:
+    case __NR_setxattr:
+    case __NR_lsetxattr:
+    case __NR_fsetxattr:
+    case __NR_getxattr:
+    case __NR_lgetxattr:
+    case __NR_fgetxattr:
+    case __NR_listxattr:
+    case __NR_llistxattr:
+    case __NR_flistxattr:
+    case __NR_removexattr:
+    case __NR_lremovexattr:
+    case __NR_fremovexattr:
+    case __NR_tkill:
+    case __NR_time:
+        break;
     case __NR_futex: {
         sys_enter_futex((void *)di, si, dx, (void *)r10, (void *)r8, r9);
     } break;
-    case __NR_select: {
-        sys_enter_select(di, (void *)si, (void *)dx, (void *)r10, (void *)r8);
-    } break;
-    case __NR_poll: {
-        sys_enter_poll((void *)di, si, dx);
-    } break;
+    case __NR_sched_setaffinity:
+    case __NR_sched_getaffinity:
+    case __NR_set_thread_area:
+    case __NR_io_setup:
+    case __NR_io_destroy:
+    case __NR_io_getevents:
+    case __NR_io_submit:
+    case __NR_io_cancel:
+    case __NR_get_thread_area:
+    case __NR_lookup_dcookie:
+        break;
     case __NR_epoll_create: {
         sys_enter_epoll_create(di);
     } break;
@@ -1103,13 +1225,148 @@ static inline void __syscall_enter(__u64 id, __u64 di, __u64 si, __u64 dx,
     case __NR_epoll_wait: {
         sys_enter_epoll_wait(di, (void *)si, dx, r10);
     } break;
+    case __NR_epoll_ctl_old:
+    case __NR_epoll_wait_old:
+    case __NR_remap_file_pages:
+    case __NR_getdents64:
+    case __NR_set_tid_address:
+    case __NR_restart_syscall:
+    case __NR_semtimedop:
+    case __NR_fadvise64:
+    case __NR_timer_create:
+    case __NR_timer_settime:
+    case __NR_timer_gettime:
+    case __NR_timer_getoverrun:
+    case __NR_timer_delete:
+    case __NR_clock_settime:
+    case __NR_clock_gettime:
+    case __NR_clock_getres:
+    case __NR_tgkill:
+        break;
     case __NR_clock_nanosleep: {
         sys_enter_clock_nanosleep(di, si, (const struct timespec *)dx,
                                   (struct timespec *)r10);
     } break;
+    case __NR_vserver:
+    case __NR_mbind:
+    case __NR_set_mempolicy:
+    case __NR_get_mempolicy:
+    case __NR_mq_open:
+    case __NR_mq_unlink:
+    case __NR_mq_timedsend:
+    case __NR_mq_timedreceive:
+    case __NR_mq_notify:
+    case __NR_mq_getsetattr:
+    case __NR_kexec_load:
+    case __NR_waitid:
+    case __NR_add_key:
+    case __NR_request_key:
+    case __NR_keyctl:
+    case __NR_ioprio_set:
+    case __NR_ioprio_get:
+    case __NR_migrate_pages:
+    case __NR_mknodat:
+    case __NR_futimesat:
+        break;
+    case __NR_inotify_init: {
+        sys_enter_inotify_init();
+    } break;
+    case __NR_inotify_init1: {
+        sys_enter_inotify_init1(di);
+    } break;
+    case __NR_inotify_add_watch: {
+        sys_enter_inotify_add_watch(di, (void *)si, dx);
+    } break;
+    case __NR_inotify_rm_watch: {
+        sys_enter_inotify_rm_watch(di, si);
+    } break;
+    case __NR_pselect6:
+    case __NR_ppoll:
+    case __NR_unshare:
+    case __NR_set_robust_list:
+    case __NR_get_robust_list:
+    case __NR_splice:
+    case __NR_tee:
+    case __NR_sync_file_range:
+    case __NR_vmsplice:
+    case __NR_move_pages:
+    case __NR_utimensat:
+    case __NR_epoll_pwait:
+    case __NR_signalfd:
+    case __NR_timerfd_create:
+    case __NR_eventfd:
+    case __NR_timerfd_settime:
+    case __NR_timerfd_gettime:
+    case __NR_signalfd4:
+    case __NR_eventfd2:
+    case __NR_preadv:
+    case __NR_pwritev:
+    case __NR_rt_tgsigqueueinfo:
+    case __NR_perf_event_open:
+        break;
+    case __NR_fallocate: {
+        sys_enter_fallocate(di, si, dx, r10);
+    } break;
+    case __NR_copy_file_range: {
+        sys_enter_copy_file_range(di, (void *)si, dx, (void *)r10, r8, r9);
+    } break;
     case __NR_bpf: {
         sys_enter_bpf(di, (union bpf_attr *)si, dx);
     } break;
+    case __NR_fanotify_init:
+    case __NR_fanotify_mark:
+    case __NR_prlimit64:
+    case __NR_name_to_handle_at:
+    case __NR_open_by_handle_at:
+    case __NR_clock_adjtime:
+    case __NR_syncfs:
+    case __NR_setns:
+    case __NR_getcpu:
+    case __NR_process_vm_readv:
+    case __NR_process_vm_writev:
+    case __NR_kcmp:
+    case __NR_finit_module:
+    case __NR_sched_setattr:
+    case __NR_sched_getattr:
+    case __NR_renameat2:
+    case __NR_seccomp:
+    case __NR_getrandom:
+    case __NR_memfd_create:
+    case __NR_kexec_file_load:
+    case __NR_execveat:
+    case __NR_userfaultfd:
+    case __NR_membarrier:
+    case __NR_preadv2:
+    case __NR_pwritev2:
+    case __NR_pkey_mprotect:
+    case __NR_pkey_alloc:
+    case __NR_pkey_free:
+    case __NR_statx:
+    case __NR_io_pgetevents:
+    case __NR_rseq:
+    case __NR_pidfd_send_signal:
+    case __NR_io_uring_setup:
+    case __NR_io_uring_enter:
+    case __NR_io_uring_register:
+    case __NR_open_tree:
+    case __NR_move_mount:
+    case __NR_fsopen:
+    case __NR_fsconfig:
+    case __NR_fsmount:
+    case __NR_fspick:
+    case __NR_pidfd_open:
+    case __NR_close_range:
+    case __NR_openat2:
+    case __NR_pidfd_getfd:
+    case __NR_process_madvise:
+    case __NR_epoll_pwait2:
+    case __NR_mount_setattr:
+    case __NR_quotactl_fd:
+    case __NR_landlock_create_ruleset:
+    case __NR_landlock_add_rule:
+    case __NR_landlock_restrict_self:
+    case __NR_memfd_secret:
+    case __NR_process_mrelease:
     default:
         break;
     }
