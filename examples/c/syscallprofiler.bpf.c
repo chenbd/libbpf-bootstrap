@@ -33,6 +33,7 @@ struct timeval;
 typedef __kernel_mode_t mode_t;
 typedef __kernel_fd_set fd_set;
 typedef unsigned long int nfds_t;
+typedef uint32_t socklen_t; /* LP64 sitll has a 32-bit socklen_t. */
 
 static inline void sys_enter_read(int fd, const void *buf, size_t count)
 {
@@ -194,6 +195,193 @@ static void sys_enter_dup3(int oldfd, int newfd, int flags)
                flags);
 }
 static void sys_enter_pause(void) { bpf_printk("sys_enter_pause"); }
+static void sys_enter_sendfile(int out_fd, int in_fd, off_t *offset,
+                               size_t count)
+{
+    bpf_printk("sys_enter_sendfile: out_fd=%d in_fd=%d offset=%lx count=%lx",
+               out_fd, in_fd, offset, count);
+}
+static void sys_enter_socket(int domain, int type, int protocol)
+{
+    bpf_printk("sys_enter_socket: domain=%d type=%d protocol=%d", domain, type,
+               protocol);
+}
+static void sys_enter_connect(int sockfd, const struct sockaddr *addr,
+                              socklen_t addrlen)
+{
+    bpf_printk("sys_enter_connect: sockfd=%d addrlen=%lu addr=%lx", sockfd,
+               addrlen, addr);
+}
+static void sys_enter_accept(int sockfd, struct sockaddr *addr,
+                             socklen_t *addrlen)
+{
+    bpf_printk("sys_enter_accept: sockfd=%d addrlen=%lx addr=%lx", sockfd,
+               addrlen, addr);
+}
+static void sys_enter_accept4(int sockfd, struct sockaddr *addr,
+                              socklen_t *addrlen, int flags)
+{
+    bpf_printk("sys_enter_accept4: sockfd=%d addrlen=%lx addr=%lx flags=%x",
+               sockfd, addrlen, addr, flags);
+}
+static void sys_enter_sendto(int sockfd, const void *buf, size_t len, int flags,
+                             const struct sockaddr *dest_addr,
+                             socklen_t addrlen)
+{
+    bpf_printk("sys_enter_sendto: sockfd=%d buf=%lx len=%lx flags=%x "
+               "dest_addr=%lx addrlen=%x",
+               sockfd, buf, len, flags, dest_addr, addrlen);
+}
+
+static void sys_enter_sendmsg(int sockfd, const struct msghdr *msg, int flags)
+{
+    bpf_printk("sys_enter_sendmsg: sockfd=%d msg=%lx flags=%x", sockfd, msg,
+               flags);
+}
+static void sys_enter_sendmmsg(int sockfd, struct mmsghdr *msgvec,
+                               unsigned int vlen, int flags)
+{
+    bpf_printk("sys_enter_sendmmsg: sockfd=%d msgvec=%lx vlen=%u flags=%x",
+               sockfd, msgvec, vlen, flags);
+}
+static void sys_enter_recvfrom(int sockfd, void *buf, size_t len, int flags,
+                               struct sockaddr *src_addr, socklen_t *addrlen)
+{
+    bpf_printk("sys_enter_recvfrom: sockfd=%d buf=%lx len=%lx flags=%x "
+               "src_addr=%lx addrlen=%x",
+               sockfd, buf, len, flags, src_addr, addrlen);
+}
+static void sys_enter_recvmsg(int sockfd, struct msghdr *msg, int flags)
+{
+    bpf_printk("sys_enter_recvmsg: sockfd=%d msg=%lx flags=%x", sockfd, msg,
+               flags);
+}
+static void sys_enter_recvmmsg(int sockfd, struct mmsghdr *msgvec,
+                               unsigned int vlen, int flags,
+                               struct timespec *timeout)
+{
+    bpf_printk(
+        "sys_enter_recvmmsg: sockfd=%d msgvec=%lx vlen=%u flags=%x timeout=%lx",
+        sockfd, msgvec, vlen, flags, timeout);
+}
+static void sys_enter_shutdown(int sockfd, int how)
+{
+    bpf_printk("sys_enter_shutdown: sockfd=%d how=%d", sockfd, how);
+}
+static void sys_enter_bind(int sockfd, const struct sockaddr *addr,
+                           socklen_t addrlen)
+{
+    bpf_printk("sys_enter_bind: sockfd=%d addr=%lx addrlen=%x", sockfd, addr,
+               addrlen);
+}
+static void sys_enter_listen(int sockfd, int backlog)
+{
+    bpf_printk("sys_enter_listen: sockfd=%d backlog=%d", sockfd, backlog);
+}
+static void sys_enter_getsockname(int sockfd, struct sockaddr *addr,
+                                  socklen_t *addrlen)
+{
+    bpf_printk("sys_enter_getsockname: sockfd=%d addr=%lx addrlen=%lx", sockfd,
+               addr, addrlen);
+}
+static void sys_enter_getpeername(int sockfd, struct sockaddr *addr,
+                                  socklen_t *addrlen)
+{
+    bpf_printk("sys_enter_getpeername: sockfd=%d addr=%lx addrlen=%lx", sockfd,
+               addr, addrlen);
+}
+static void sys_enter_socketpair(int domain, int type, int protocol, int sv[2])
+{
+    bpf_printk("sys_enter_socketpair: domain=%d type=%d protocol=%d sv=%lx",
+               domain, type, protocol, sv);
+}
+static void sys_enter_getsockopt(int sockfd, int level, int optname,
+                                 void *optval, socklen_t *optlen)
+{
+    bpf_printk("sys_enter_getsockopt: sockfd=%d level=%d optname=%d optval=%lx "
+               "optlen=%lx",
+               sockfd, level, optname, optval, optlen);
+}
+static void sys_enter_setsockopt(int sockfd, int level, int optname,
+                                 const void *optval, socklen_t optlen)
+{
+    bpf_printk("sys_enter_setsockopt: sockfd=%d level=%d optname=%d optval=%lx "
+               "optlen=%u",
+               sockfd, level, optname, optval, optlen);
+    int v = -1;
+    if (optlen == 4) {
+        bpf_core_read_user(&v, sizeof(v), optval);
+    }
+    if (v != -1) {
+        bpf_printk("optval=%d", v);
+    }
+}
+static void
+sys_enter_clone(int (*fn)(void *), void *stack, int flags, void *arg
+                /* pid_t *parent_tid, void *tls, pid_t *child_tid */)
+{
+    bpf_printk("sys_enter_clone: fn=%lx stack=%lx flags=%x arg=%lx", fn, stack,
+               flags, arg);
+}
+
+static void sys_enter_clone3(struct clone_args *cl_args, size_t size)
+{
+    bpf_printk("sys_enter_clone3: cl_args=%lx size=%lu", cl_args, size);
+}
+static void sys_enter_fork() { bpf_printk("sys_enter_fork"); }
+static void sys_enter_vfork() { bpf_printk("sys_enter_vfork"); }
+static void sys_enter_execve(const char *pathname, char *const argv[],
+                             char *const envp[])
+{
+    char tmp[256] = {0};
+    bpf_core_read_user_str(tmp, sizeof(tmp), pathname);
+    bpf_printk("sys_enter_execve: pathname='%s' argv=%x envp=%x", tmp, argv,
+               envp);
+}
+static void sys_enter_exit(int status)
+{
+    bpf_printk("sys_enter_exit: status=%d", status);
+}
+static void sys_enter_exit_group(int status)
+{
+    bpf_printk("sys_enter_exit_group: status=%d", status);
+}
+static void sys_enter_wait4(pid_t pid, int *wstatus, int options,
+                            struct rusage *rusage)
+{
+    bpf_printk("sys_enter_wait4: pid=%d wstatus=%lx options=%x rusage=%lx", pid,
+               wstatus, options, rusage);
+}
+static void sys_enter_kill(pid_t pid, int sig)
+{
+    bpf_printk("sys_enter_kill: pid=%d sig=%d options=%x rusage=%lx", pid, sig);
+}
+static void sys_enter_fcntl(int fd, int cmd /* arg */)
+{
+    bpf_printk("sys_enter_fcntl: fd=%d cmd=%d", fd, cmd);
+}
+static void sys_enter_flock(int fd, int operation)
+{
+    bpf_printk("sys_enter_flock: fd=%d operation=%d", fd, operation);
+}
+static void sys_enter_fsync(int fd)
+{
+    bpf_printk("sys_enter_fsync: fd=%d", fd);
+}
+static void sys_enter_fdatasync(int fd)
+{
+    bpf_printk("sys_enter_fdatasync: fd=%d", fd);
+}
+static void sys_enter_truncate(const char *path, off_t length)
+{
+    char tmp[256] = {0};
+    bpf_core_read_user_str(tmp, sizeof(tmp), path);
+    bpf_printk("sys_enter_truncate: pathname='%s' length=%lu", tmp, length);
+}
+static void sys_enter_ftruncate(int fd, off_t length)
+{
+    bpf_printk("sys_enter_ftruncate: fd=%d length=%lu", fd, length);
+}
 static void sys_enter_nanosleep(const struct timespec *req,
                                 struct timespec *rem)
 {
@@ -367,6 +555,108 @@ static inline void __syscall_enter(__u64 id, __u64 di, __u64 si, __u64 dx,
     } break;
     case __NR_pause: {
         sys_enter_pause();
+    } break;
+    case __NR_sendfile: {
+        sys_enter_sendfile(di, si, (void *)dx, r10);
+    } break;
+    case __NR_socket: {
+        sys_enter_socket(di, si, dx);
+    } break;
+    case __NR_connect: {
+        sys_enter_connect(di, (void *)si, dx);
+    } break;
+    case __NR_accept: {
+        sys_enter_accept(di, (void *)si, (void *)dx);
+    } break;
+    case __NR_accept4: {
+        sys_enter_accept4(di, (void *)si, (void *)dx, r10);
+    } break;
+    case __NR_sendto: {
+        sys_enter_sendto(di, (void *)si, dx, r10, (void *)r8, r9);
+    } break;
+    case __NR_sendmsg: {
+        sys_enter_sendmsg(di, (void *)si, dx);
+    } break;
+    case __NR_sendmmsg: {
+        sys_enter_sendmmsg(di, (void *)si, dx, r10);
+    } break;
+    case __NR_recvfrom: {
+        sys_enter_recvfrom(di, (void *)si, dx, r10, (void *)r8, (void *)r9);
+    } break;
+    case __NR_recvmsg: {
+        sys_enter_recvmsg(di, (void *)si, dx);
+    } break;
+    case __NR_recvmmsg: {
+        sys_enter_recvmmsg(di, (void *)si, dx, r10, (void *)r8);
+    } break;
+    case __NR_shutdown: {
+        sys_enter_shutdown(di, si);
+    } break;
+    case __NR_bind: {
+        sys_enter_bind(di, (void *)si, dx);
+    } break;
+    case __NR_listen: {
+        sys_enter_listen(di, si);
+    } break;
+    case __NR_getsockname: {
+        sys_enter_getsockname(di, (void *)si, (void *)dx);
+    } break;
+    case __NR_getpeername: {
+        sys_enter_getpeername(di, (void *)si, (void *)dx);
+    } break;
+    case __NR_socketpair: {
+        sys_enter_socketpair(di, si, dx, (void *)r10);
+    } break;
+    case __NR_setsockopt: {
+        sys_enter_setsockopt(di, si, dx, (void *)r10, r8);
+    } break;
+    case __NR_getsockopt: {
+        sys_enter_getsockopt(di, si, dx, (void *)r10, (void *)r8);
+    } break;
+    case __NR_clone: {
+        sys_enter_clone((void *)di, (void *)si, dx, (void *)r10);
+    } break;
+    case __NR_clone3: {
+        sys_enter_clone3((void *)di, si);
+    } break;
+    case __NR_fork: {
+        sys_enter_fork();
+    } break;
+    case __NR_vfork: {
+        sys_enter_vfork();
+    } break;
+    case __NR_execve: {
+        sys_enter_execve((void *)di, (void *)si, (void *)dx);
+    } break;
+    case __NR_exit: {
+        sys_enter_exit(di);
+    } break;
+    case __NR_exit_group: {
+        sys_enter_exit_group(di);
+    } break;
+    case __NR_wait4: {
+        sys_enter_wait4(di, (void *)si, dx, (void *)r10);
+    } break;
+    case __NR_kill: {
+        sys_enter_kill(di, si);
+    } break;
+    case __NR_fcntl: {
+        sys_enter_fcntl(di, si);
+    } break;
+    case __NR_flock: {
+        sys_enter_flock(di, si);
+    } break;
+    case __NR_fsync: {
+        sys_enter_fsync(di);
+    } break;
+    case __NR_fdatasync: {
+        sys_enter_fdatasync(di);
+    } break;
+    case __NR_truncate: {
+        sys_enter_truncate((void *)di, si);
+    } break;
+    case __NR_ftruncate: {
+        sys_enter_ftruncate(di, si);
     } break;
     case __NR_nanosleep: {
         sys_enter_nanosleep((void *)di, (void *)si);
